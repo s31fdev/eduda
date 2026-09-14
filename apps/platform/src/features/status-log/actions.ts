@@ -24,16 +24,12 @@ export const getStudentStatusTimeline = permissionAction({ student: ['read'] })
       orderBy: [{ effectiveAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
-        fromStatus: true,
         toStatus: true,
-        reason: true,
         comment: true,
         effectiveAt: true,
         approximate: true,
-        createdAt: true,
         groupId: true,
         groupName: true,
-        actorUser: { select: { name: true } },
       },
     })
   })

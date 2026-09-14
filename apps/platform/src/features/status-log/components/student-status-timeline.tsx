@@ -1,35 +1,32 @@
 'use client'
 
-import type { StatusChangeReason, StudentStatus } from '@repo/db/enums'
-import { STUDENT_STATUS } from '@/src/features/students/status'
 import { formatDateOnly } from '@/src/lib/timezone'
 import { Badge } from '@repo/ui/components/badge'
 import DataTable from '@repo/ui/components/data-table'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { type ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import { ArrowRight, History } from 'lucide-react'
+import { History } from 'lucide-react'
 import Link from 'next/link'
 import { useStudentStatusTimelineQuery } from '../queries'
 
 type Row = NonNullable<ReturnType<typeof useStudentStatusTimelineQuery>['data']>[number]
 
-const REASON_LABEL: Record<StatusChangeReason, string> = {
-  ENROLLED: 'Зачислен',
-  RETURNED: 'Возвращён',
-  TRANSFERRED_OUT: 'Переведён в другую группу',
-  TRANSFERRED_IN: 'Пришёл переводом',
-  DISMISSED: 'Отчислен',
-  GROUP_CLOSED: 'Группа закрыта',
-  REMOVED: 'Убран из группы',
-  LESSON_CANCELLED: 'Урок отменён',
-  LESSON_RESTORED: 'Урок восстановлен',
-}
-
-/** Статус записи; `REMOVED` — псевдостатус удалённой записи, в `StudentStatus` его нет. */
-function StatusBadge({ status }: { status: string }) {
-  const known = STUDENT_STATUS[status as StudentStatus]
-  if (!known) return <Badge variant="outline">Удалён</Badge>
-  return <Badge variant={known.variant}>{known.label}</Badge>
+/**
+ * Что стало с учеником в группе — по статусу, в который перешла запись. Возврат и
+ * приход переводом тоже «Зачислен»: для школы это один и тот же факт.
+ * `REMOVED` — псевдостатус удалённой записи, в `StudentStatus` его нет.
+ */
+const STATUS: Record<
+  string,
+  { label: string; variant: 'success' | 'destructive' | 'outline' | 'secondary' }
+> = {
+  ACTIVE: { label: 'Зачислен', variant: 'success' },
+  TRIAL: { label: 'Зачислен', variant: 'success' },
+  DISMISSED: { label: 'Отчислен', variant: 'destructive' },
+  TRANSFERRED: { label: 'Переведён', variant: 'outline' },
+  COMPLETED: { label: 'Завершил', variant: 'secondary' },
+  ARCHIVED: { label: 'Группа закрыта', variant: 'outline' },
+  REMOVED: { label: 'Убран из группы', variant: 'outline' },
 }
 
 const columns: ColumnDef<Row>[] = [
@@ -72,27 +69,13 @@ const columns: ColumnDef<Row>[] = [
     meta: { title: 'Группа', flexible: true },
   },
   {
-    id: 'reason',
-    header: 'Событие',
-    size: 190,
-    cell: ({ row }) => REASON_LABEL[row.original.reason],
-    meta: { title: 'Событие' },
-  },
-  {
-    id: 'transition',
+    id: 'status',
     header: 'Статус',
-    size: 230,
-    cell: ({ row }) => (
-      <span className="flex items-center gap-1.5">
-        {row.original.fromStatus && (
-          <>
-            <StatusBadge status={row.original.fromStatus} />
-            <ArrowRight className="text-muted-foreground size-3.5 shrink-0" />
-          </>
-        )}
-        <StatusBadge status={row.original.toStatus} />
-      </span>
-    ),
+    size: 150,
+    cell: ({ row }) => {
+      const status = STATUS[row.original.toStatus]
+      return status ? <Badge variant={status.variant}>{status.label}</Badge> : null
+    },
     meta: { title: 'Статус' },
   },
   {
@@ -100,14 +83,6 @@ const columns: ColumnDef<Row>[] = [
     header: 'Комментарий',
     cell: ({ row }) => <span className="text-muted-foreground">{row.original.comment ?? '—'}</span>,
     meta: { title: 'Комментарий', flexible: true },
-  },
-  {
-    id: 'actor',
-    header: 'Кто',
-    size: 160,
-    // У строк, восстановленных миграцией, автора нет — прочерк, а не выдуманное имя.
-    cell: ({ row }) => row.original.actorUser?.name ?? '—',
-    meta: { title: 'Кто' },
   },
 ]
 
