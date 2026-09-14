@@ -14,6 +14,7 @@ model Lesson {
 
     attendance Attendance[]
     teachers   TeacherLesson[]
+    statusChanges StatusChange[]
 
     @@index([groupId])
     @@index([organizationId])

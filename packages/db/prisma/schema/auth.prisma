@@ -22,6 +22,7 @@ model User {
     soldPackages          Package[]
     lessonsBalanceChanges StudentLessonsBalanceHistory[]
     ledgerEntries         WalletEntry[]
+    statusChanges         StatusChange[]
     sessions              Session[]
     accounts              Account[]
     members               Member[]
@@ -160,6 +161,7 @@ model Organization {
     studentAchievements            StudentAchievement[]
     parentMessengers               ParentMessenger[]
     notificationOutbox             NotificationOutbox[]
+    statusChanges                  StatusChange[]
     maxBot                         OrganizationMaxBot?
 
     @@unique([slug])

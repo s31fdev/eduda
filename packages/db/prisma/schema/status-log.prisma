@@ -1,0 +1,50 @@
+/// Журнал смены статусов: append-only, как `WalletEntry`. Строки не правятся и не
+/// удаляются — ошибку исправляет следующая строка.
+///
+/// Колонки `status` / `statusChangedAt` / `statusComment` у сущностей остаются кешем
+/// поверх журнала, как `Wallet.lessonsBalance` поверх `WalletEntry`: по ним
+/// по-прежнему идут отбор и сортировка списков. Пишет обе стороны сразу только
+/// `apps/platform/src/features/status-log/record.server.ts`.
+///
+/// Адресация своими колонками, а не парой `entityType + entityId`: у `StudentGroup`
+/// составной ключ, единственного id у неё нет.
+model StatusChange {
+    id         Int                @id @default(autoincrement())
+    entity     StatusEntity
+    /// null — сущность создана: у записи в группу не было статуса до этого.
+    /// Строкой, а не енумом: значения приходят из разных енумов (`StudentStatus`,
+    /// `LessonStatus`), плюс псевдостатус `REMOVED` у удалённой записи.
+    fromStatus String?
+    toStatus   String
+    reason     StatusChangeReason
+    comment    String?
+
+    /// Бизнес-день: день отчисления, который назвал менеджер, а не день записи.
+    /// Отчисление задним числом попадает в свой месяц.
+    effectiveAt String
+    /// Когда записали. Пара с `effectiveAt` — как у `WalletEntry`.
+    createdAt   DateTime @default(now())
+
+    // Relations
+    organizationId Int
+    actorUserId    Int?
+    studentId      Int?
+    groupId        Int?
+    lessonId       Int?
+    /// Снимок названия группы — как `Package.productName`: группу переименуют или
+    /// удалят, а строка журнала обязана читаться.
+    groupName      String @default("")
+
+    organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+    actorUser    User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+    /// Ученика удаляют со всем, что о нём известно, — это обещано школе.
+    student      Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+    /// Группу и урок — нет: «ушёл 5 ноября» остаётся правдой и после удаления группы.
+    group        Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+    lesson       Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+    @@index([organizationId, studentId, effectiveAt])
+    @@index([organizationId, groupId, effectiveAt])
+    @@index([lessonId])
+    @@index([organizationId, effectiveAt])
+}

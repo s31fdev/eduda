@@ -25,6 +25,7 @@ model Group {
     teachers              TeacherGroup[]
     schedules             GroupSchedule[]
     balanceHistoryEntries StudentLessonsBalanceHistory[]
+    statusChanges         StatusChange[]
 
     @@index([organizationId])
     @@index([courseId])

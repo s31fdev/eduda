@@ -129,3 +129,31 @@ enum ReminderMode {
     DAY_BEFORE
     SAME_DAY
 }
+
+enum StatusEntity {
+    STUDENT_GROUP
+    LESSON
+}
+
+/// Почему статус сменился. Отдельно от пары from/to, потому что статусы этого не
+/// говорят: `null → ACTIVE` — это и зачисление, и приход переводом, а
+/// `DISMISSED → ACTIVE` — и возврат, и перевод.
+enum StatusChangeReason {
+    /// Зачислен в группу.
+    ENROLLED
+    /// Возвращён после отчисления.
+    RETURNED
+    /// Переведён отсюда.
+    TRANSFERRED_OUT
+    /// Пришёл переводом.
+    TRANSFERRED_IN
+    DISMISSED
+    /// Закрыт вместе с группой: архивация или завершение.
+    GROUP_CLOSED
+    /// Запись удалена из группы.
+    REMOVED
+    LESSON_CANCELLED
+    LESSON_RESTORED
+    /// Состояние на момент запуска журнала: прошлое до него не восстановить.
+    IMPORTED
+}

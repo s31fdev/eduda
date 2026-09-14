@@ -34,6 +34,7 @@ model Student {
     wallets               Wallet[]
     parents               StudentParent[]
     walletEntries         WalletEntry[]
+    statusChanges         StatusChange[]
 
     @@index([organizationId])
 }
