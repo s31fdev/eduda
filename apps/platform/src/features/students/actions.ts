@@ -114,7 +114,7 @@ export const getAllStudents = authAction
     return await prisma.student.findMany({
       where: { organizationId: ctx.session.organizationId! },
       include: {
-        groups: { where: { status: { in: ['ACTIVE', 'TRIAL'] } } },
+        groups: { where: { status: 'ACTIVE' } },
         wallets: true,
         parents: { include: { parent: true } },
       },

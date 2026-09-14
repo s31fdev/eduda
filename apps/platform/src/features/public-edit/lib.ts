@@ -28,12 +28,12 @@ export function attendanceStats(groups: GroupsData) {
  * Ближайшие занятия по всем текущим группам ребёнка. `date` — `YYYY-MM-DD`,
  * поэтому сравнение и сортировка строкой = хронологические.
  *
- * Группы вне ACTIVE/TRIAL отбрасываем: у отчисленной группы занятия в
+ * Группы вне ACTIVE отбрасываем: у отчисленной группы занятия в
  * расписании остаются, и без фильтра они всплыли бы как «следующее занятие».
  */
 export function upcomingLessons(groups: GroupsData, today: string, limit = 5) {
   return groups
-    .filter((sg) => sg.status === 'ACTIVE' || sg.status === 'TRIAL')
+    .filter((sg) => sg.status === 'ACTIVE')
     .flatMap((sg) =>
       sg.group.lessons
         .filter((lesson) => lesson.date >= today)

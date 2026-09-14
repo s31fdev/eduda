@@ -53,26 +53,26 @@ async function main() {
           data: { firstName, lastName: 'Архивации', organizationId },
           select: { id: true },
         })
-      const enroll = async (studentId: number, groupId: number, status: 'ACTIVE' | 'TRIAL') =>
+      const enroll = async (studentId: number, groupId: number) =>
         await tx.studentGroup.create({
           data: {
             organizationId,
             studentId,
             groupId,
-            status,
+            status: 'ACTIVE',
             statusChangedAt: '2026-09-01',
           },
         })
 
       const active = await makeStudent('Активный')
-      const trial = await makeStudent('Пробный')
+      const second = await makeStudent('Второй')
       const dismissed = await makeStudent('Отчисленный')
       const both = await makeStudent('Двухгрупповой')
 
-      await enroll(active.id, closing.id, 'ACTIVE')
-      await enroll(trial.id, closing.id, 'TRIAL')
-      await enroll(both.id, closing.id, 'ACTIVE')
-      await enroll(both.id, living.id, 'ACTIVE')
+      await enroll(active.id, closing.id)
+      await enroll(second.id, closing.id)
+      await enroll(both.id, closing.id)
+      await enroll(both.id, living.id)
 
       // Отчислен до архивации, своей датой и со своим комментарием.
       await tx.studentGroup.create({
@@ -123,7 +123,7 @@ async function main() {
       // ─── Живые записи закрыты датой архивации ─────────────────────────
       for (const [who, id] of [
         ['активный', active.id],
-        ['пробный', trial.id],
+        ['второй', second.id],
       ] as const) {
         const row = await recordOf(id, closing.id)
         assert.equal(row.status, 'ARCHIVED', `${who} ученик должен быть закрыт статусом ARCHIVED`)

@@ -39,7 +39,7 @@ async function main() {
   const groups = await prisma.group.findMany({
     where: {
       status: { in: ['ARCHIVED', 'COMPLETED'] },
-      students: { some: { status: { in: ['ACTIVE', 'TRIAL'] } } },
+      students: { some: { status: 'ACTIVE' } },
     },
     select: {
       id: true,
@@ -50,7 +50,7 @@ async function main() {
       course: { select: { name: true } },
       organization: { select: { name: true } },
       students: {
-        where: { status: { in: ['ACTIVE', 'TRIAL'] } },
+        where: { status: 'ACTIVE' },
         select: { studentId: true, status: true },
       },
     },
@@ -93,11 +93,9 @@ async function main() {
   }
   console.log()
   for (const g of groups) {
-    const trial = g.students.filter((s) => s.status === 'TRIAL').length
-    const suffix = trial > 0 ? `, из них пробных ${trial}` : ''
     console.log(
       `  группа ${g.id} «${g.name ?? g.course.name}» — ${g.status} от ${g.statusChangedAt}: ` +
-        `${g.students.length} записей → ${closingStatusOf(g.status)}${suffix}`,
+        `${g.students.length} записей → ${closingStatusOf(g.status)}`,
     )
   }
 

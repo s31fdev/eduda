@@ -20,7 +20,6 @@ const STATUS: Record<
   { label: string; variant: 'success' | 'destructive' | 'outline' | 'secondary' }
 > = {
   ACTIVE: { label: 'Зачислен', variant: 'success' },
-  TRIAL: { label: 'Зачислен', variant: 'success' },
   DISMISSED: { label: 'Отчислен', variant: 'destructive' },
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'secondary' },

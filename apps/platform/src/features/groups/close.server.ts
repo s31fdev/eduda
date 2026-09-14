@@ -39,7 +39,7 @@ export async function closeStudentGroupsTx(
     where: {
       groupId: args.groupId,
       organizationId: args.organizationId,
-      status: { in: ['ACTIVE', 'TRIAL'] },
+      status: 'ACTIVE',
     },
     select: { studentId: true },
   })

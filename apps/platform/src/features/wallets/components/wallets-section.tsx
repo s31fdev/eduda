@@ -100,7 +100,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
 
   const unlinkedGroups = student.groups.filter(
     (sg) =>
-      (sg.status === 'ACTIVE' || sg.status === 'TRIAL' || sg.status === 'COMPLETED') &&
+      (sg.status === 'ACTIVE' || sg.status === 'COMPLETED') &&
       !student.wallets.some((w) => w.studentGroups.some((wsg) => wsg.groupId === sg.groupId)),
   )
 
@@ -345,9 +345,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
           </AlertDialogHeader>
           {(() => {
             const target = student.wallets.find((w) => w.id === archiveWalletId)
-            const hasActiveGroups = target?.studentGroups.some(
-              (sg) => sg.status === 'ACTIVE' || sg.status === 'TRIAL',
-            )
+            const hasActiveGroups = target?.studentGroups.some((sg) => sg.status === 'ACTIVE')
             return hasActiveGroups ? (
               <p className="text-destructive px-4 text-sm">
                 К кошельку привязаны активные группы — оплаты по ним больше нельзя будет зачислять

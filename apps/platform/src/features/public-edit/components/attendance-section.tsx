@@ -50,7 +50,6 @@ const STUDENT_STATUS: Record<
   { label: string; variant: 'secondary' | 'success' | 'destructive' | 'outline' } | null
 > = {
   ACTIVE: null,
-  TRIAL: { label: 'Пробный', variant: 'secondary' },
   DISMISSED: { label: 'Отчислен', variant: 'destructive' },
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'success' },

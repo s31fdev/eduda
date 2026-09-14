@@ -54,7 +54,6 @@ enum PackageStatus {
 }
 
 enum StudentStatus {
-    TRIAL
     ACTIVE
     DISMISSED
     TRANSFERRED

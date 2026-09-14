@@ -27,7 +27,7 @@ export type Stats = {
   coinsSpent: number
   /** Завершённых групп (`COMPLETED`). */
   completedGroups: number
-  /** Групп, в которых ученик занимается сейчас (`ACTIVE` + `TRIAL`). */
+  /** Групп, в которых ученик занимается сейчас (`ACTIVE`). */
   activeGroups: number
   /** `birthday:2026` — год последнего наступившего ДР. `null`, если даты нет. */
   birthdayKey: string | null
@@ -131,7 +131,7 @@ export async function collectStats(
     ordersCount,
     coinsSpent,
     completedGroups: groupCount(StudentStatus.COMPLETED),
-    activeGroups: groupCount(StudentStatus.ACTIVE, StudentStatus.TRIAL),
+    activeGroups: groupCount(StudentStatus.ACTIVE),
     birthdayKey: birthdayKeyFor(student?.birthDate ?? null, todayYmdInTz(tz)),
     claimed: new Map(claimedRows.map((row) => [row.key, row])),
   }

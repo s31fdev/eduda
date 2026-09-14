@@ -346,7 +346,7 @@ export const getTransferPreview = authAction
           name: true,
           lessonsBalance: true,
           studentGroups: {
-            where: { status: { in: ['ACTIVE', 'TRIAL'] } },
+            where: { status: 'ACTIVE' },
             select: {
               group: {
                 select: { name: true, course: { select: { name: true } }, schedules: true },

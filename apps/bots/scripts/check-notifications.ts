@@ -101,7 +101,7 @@ async function main() {
           organizationId: number,
           groupId: number,
           firstName: string,
-          status: 'ACTIVE' | 'TRIAL' | 'DISMISSED',
+          status: 'ACTIVE' | 'DISMISSED',
           messenger: 'active' | 'unsubscribed' | 'none',
         ) => {
           const student = await tx.student.create({

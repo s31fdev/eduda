@@ -628,7 +628,6 @@ export const updateScheduleAndRegenerateLessons = authAction
               lessonId: lesson.id,
               studentId: s.studentId,
               status: 'UNSPECIFIED' as const,
-              isTrial: s.status === 'TRIAL',
               comment: '',
             })),
           ),
@@ -720,7 +719,7 @@ export const getGroupDetail = authAction
         teachers: { include: { teacher: true, rate: true } },
         students: {
           // ARCHIVED — чтобы состав архивной группы не пропадал из её карточки
-          where: { status: { in: ['ACTIVE', 'TRIAL', 'COMPLETED', 'ARCHIVED'] } },
+          where: { status: { in: ['ACTIVE', 'COMPLETED', 'ARCHIVED'] } },
           include: { student: true },
         },
       },
@@ -902,7 +901,7 @@ export const transferStudent = authAction
       const existingSg = await tx.studentGroup.findUnique({
         where: { studentId_groupId: { studentId, groupId: newGroupId } },
       })
-      if (existingSg?.status === 'ACTIVE' || existingSg?.status === 'TRIAL') {
+      if (existingSg?.status === 'ACTIVE') {
         throw new Error('Ученик уже в этой группе')
       }
 
@@ -1067,7 +1066,7 @@ export const createLessonForGroup = authAction
       const group = await tx.group.findFirstOrThrow({
         where: { id: groupId, organizationId: orgId },
         include: {
-          students: { where: { status: { in: ['ACTIVE', 'TRIAL'] } } },
+          students: { where: { status: 'ACTIVE' } },
           teachers: { include: { rate: true } },
           schedules: true,
         },

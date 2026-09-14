@@ -9,7 +9,6 @@ import { StatCard } from '@repo/ui/components/stat-card'
 import { Cake, Coins, Mail, Phone, Users } from 'lucide-react'
 
 const STATUS_LABEL: Record<StudentStatus, string> = {
-  TRIAL: 'Пробное',
   ACTIVE: 'Занимается',
   DISMISSED: 'Отчислен',
   TRANSFERRED: 'Переведён',
@@ -18,7 +17,6 @@ const STATUS_LABEL: Record<StudentStatus, string> = {
 }
 
 const STATUS_VARIANT: Record<StudentStatus, 'default' | 'secondary' | 'outline'> = {
-  TRIAL: 'outline',
   ACTIVE: 'default',
   DISMISSED: 'secondary',
   TRANSFERRED: 'secondary',

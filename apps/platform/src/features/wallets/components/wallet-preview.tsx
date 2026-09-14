@@ -62,7 +62,7 @@ function revealRow(expanded: boolean, index: number) {
 }
 
 /** Ученик всё ещё в группе — в отличие от отчисленных, переведённых и выпустившихся. */
-const OPEN_STATUSES: StudentStatus[] = ['ACTIVE', 'TRIAL']
+const OPEN_STATUSES: StudentStatus[] = ['ACTIVE']
 
 /**
  * Ровно те поля, которые показывает предпросмотр. Структурный тип, а не вывод из

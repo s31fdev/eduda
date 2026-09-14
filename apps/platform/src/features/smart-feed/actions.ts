@@ -92,7 +92,7 @@ export const getLowBalance = authAction
         student: true,
         studentGroups: {
           where: {
-            status: { in: ['ACTIVE', 'TRIAL'] },
+            status: 'ACTIVE',
             group: {
               status: 'ACTIVE',
             },
@@ -160,7 +160,7 @@ export const getAbsentStreak = authAction
       select: {
         id: true,
         students: {
-          where: { status: { in: ['ACTIVE', 'TRIAL'] } },
+          where: { status: 'ACTIVE' },
           select: {
             studentId: true,
             student: { select: { firstName: true, lastName: true } },

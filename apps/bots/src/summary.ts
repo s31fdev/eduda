@@ -65,7 +65,7 @@ async function readParents(db: Prisma.TransactionClient, parentIds: number[]) {
               groups: {
                 // Отчисленные и завершившие остаются записями в группе, а
                 // архивные группы — группами: рассказывать о них нечего.
-                where: { status: { in: ['ACTIVE', 'TRIAL'] }, group: { status: 'ACTIVE' } },
+                where: { status: 'ACTIVE', group: { status: 'ACTIVE' } },
                 select: {
                   status: true,
                   wallet: { select: { lessonsBalance: true } },
@@ -109,7 +109,7 @@ function studentLines(student: Student): string[] {
 
       return [
         ...(index > 0 ? [''] : []),
-        `   🎓 ${enrolment.group.course.name}${enrolment.status === 'TRIAL' ? ' (пробное)' : ''}`,
+        `   🎓 ${enrolment.group.course.name}`,
         `   📍 ${enrolment.group.location.name}`,
         ...maybe(scheduleWords(enrolment.group.schedules), (words) => `   🗓 ${words}`),
         // Ноль — это и «занятия кончились», и «школа пакетами не пользуется».

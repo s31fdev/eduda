@@ -45,7 +45,6 @@ export interface StudentGroupWithStats extends Prisma.StudentGroupGetPayload<{
 
 const StudentStatusMap = {
   ACTIVE: 'Активен',
-  TRIAL: 'Пробный',
   DISMISSED: 'Отчислен',
   TRANSFERRED: 'Переведён',
   COMPLETED: 'Завершил',
@@ -275,8 +274,6 @@ function getStatusBadge(sg: StudentGroupWithStats) {
       return <Badge>{StudentStatusMap.COMPLETED}</Badge>
     case 'ARCHIVED':
       return <Badge variant="secondary">{StudentStatusMap.ARCHIVED}</Badge>
-    case 'TRIAL':
-      return <Badge variant="secondary">{StudentStatusMap.TRIAL}</Badge>
     default:
       return null
   }

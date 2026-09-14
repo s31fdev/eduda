@@ -419,9 +419,7 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
 
   // Распределение статусов, чтобы все списки учеников были непустыми.
   const STATUSES: Prisma.StudentGroupCreateManyInput['status'][] = [
-    ...Array(22).fill('ACTIVE'),
-    'TRIAL',
-    'TRIAL',
+    ...Array(24).fill('ACTIVE'),
     'DISMISSED',
     'DISMISSED',
     'COMPLETED',
@@ -523,7 +521,7 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
   const studentsByGroup: number[][] = createdGroups.map(() => [])
   students.forEach((st, i) => {
     const s = seeds[i]!
-    if (s.status === 'ACTIVE' || s.status === 'TRIAL') studentsByGroup[s.groupIdx]!.push(st.id)
+    if (s.status === 'ACTIVE') studentsByGroup[s.groupIdx]!.push(st.id)
   })
 
   await prisma.studentGroup.createMany({
@@ -558,7 +556,7 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
     groupId: sg.groupId,
     groupName: getGroupName(sg.group),
   })
-  const isLive = (sg: (typeof enrolled)[number]) => sg.status === 'ACTIVE' || sg.status === 'TRIAL'
+  const isLive = (sg: (typeof enrolled)[number]) => sg.status === 'ACTIVE'
   // Двумя запросами: закрывающие строки получают `id` больше зачислений, и сверка
   // «последняя строка по id = колонки» верна.
   await prisma.statusChange.createMany({

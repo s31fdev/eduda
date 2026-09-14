@@ -12,7 +12,6 @@ export const STUDENT_STATUS: Record<
   { label: string; variant: 'secondary' | 'success' | 'destructive' | 'outline' }
 > = {
   ACTIVE: { label: 'Активен', variant: 'success' },
-  TRIAL: { label: 'Пробный', variant: 'secondary' },
   DISMISSED: { label: 'Отчислен', variant: 'destructive' },
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'secondary' },

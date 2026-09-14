@@ -182,7 +182,7 @@ async function readLessons(
           location: { select: { name: true } },
           // Отчисленные и завершившие в группе остаются — напоминать им нечего.
           students: {
-            where: { status: { in: ['ACTIVE', 'TRIAL'] } },
+            where: { status: 'ACTIVE' },
             select: {
               student: {
                 select: {
