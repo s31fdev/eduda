@@ -16,5 +16,5 @@ export const STUDENT_STATUS: Record<
   DISMISSED: { label: 'Отчислен', variant: 'destructive' },
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'secondary' },
-  ARCHIVED: { label: 'Группа закрыта', variant: 'outline' },
+  ARCHIVED: { label: 'Архивирован', variant: 'outline' },
 }

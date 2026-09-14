@@ -49,7 +49,7 @@ const StudentStatusMap = {
   DISMISSED: 'Отчислен',
   TRANSFERRED: 'Переведён',
   COMPLETED: 'Завершил',
-  ARCHIVED: 'Группа закрыта',
+  ARCHIVED: 'Архивирован',
 } as const
 
 // ─── Stats helpers ──────────────────────────────────────────────────────────

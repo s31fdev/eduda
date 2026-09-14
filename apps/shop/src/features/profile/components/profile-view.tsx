@@ -14,7 +14,7 @@ const STATUS_LABEL: Record<StudentStatus, string> = {
   DISMISSED: 'Отчислен',
   TRANSFERRED: 'Переведён',
   COMPLETED: 'Завершил',
-  ARCHIVED: 'Группа закрыта',
+  ARCHIVED: 'Архивирован',
 }
 
 const STATUS_VARIANT: Record<StudentStatus, 'default' | 'secondary' | 'outline'> = {

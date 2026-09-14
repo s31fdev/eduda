@@ -24,7 +24,7 @@ const STATUS: Record<
   DISMISSED: { label: 'Отчислен', variant: 'destructive' },
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'secondary' },
-  ARCHIVED: { label: 'Группа закрыта', variant: 'outline' },
+  ARCHIVED: { label: 'Архивирован', variant: 'outline' },
 }
 
 const RETURNED = { label: 'Вернулся', variant: 'success' } as const
