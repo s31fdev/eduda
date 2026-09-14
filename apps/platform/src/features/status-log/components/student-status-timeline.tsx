@@ -12,8 +12,8 @@ import { useStudentStatusTimelineQuery } from '../queries'
 type Row = NonNullable<ReturnType<typeof useStudentStatusTimelineQuery>['data']>[number]
 
 /**
- * Что стало с учеником в группе — по статусу, в который перешла запись. Возврат и
- * приход переводом тоже «Зачислен»: для школы это один и тот же факт.
+ * Что стало с учеником в группе — по статусу, в который перешла запись. Приход
+ * переводом — тоже «Зачислен», а возврат после отчисления подписан отдельно.
  * `REMOVED` — псевдостатус удалённой записи, в `StudentStatus` его нет.
  */
 const STATUS: Record<
@@ -28,6 +28,8 @@ const STATUS: Record<
   ARCHIVED: { label: 'Группа закрыта', variant: 'outline' },
   REMOVED: { label: 'Убран из группы', variant: 'outline' },
 }
+
+const RETURNED = { label: 'Вернулся', variant: 'success' } as const
 
 const columns: ColumnDef<Row>[] = [
   {
@@ -73,7 +75,7 @@ const columns: ColumnDef<Row>[] = [
     header: 'Статус',
     size: 150,
     cell: ({ row }) => {
-      const status = STATUS[row.original.toStatus]
+      const status = row.original.reason === 'RETURNED' ? RETURNED : STATUS[row.original.toStatus]
       return status ? <Badge variant={status.variant}>{status.label}</Badge> : null
     },
     meta: { title: 'Статус' },

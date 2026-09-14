@@ -25,6 +25,7 @@ export const getStudentStatusTimeline = permissionAction({ student: ['read'] })
       select: {
         id: true,
         toStatus: true,
+        reason: true,
         comment: true,
         effectiveAt: true,
         approximate: true,
