@@ -14,7 +14,6 @@ type Row = NonNullable<ReturnType<typeof useStudentStatusTimelineQuery>['data']>
 /**
  * Что стало с учеником в группе — по статусу, в который перешла запись. Приход
  * переводом — тоже «Зачислен», а возврат после отчисления подписан отдельно.
- * `REMOVED` — псевдостатус удалённой записи, в `StudentStatus` его нет.
  */
 const STATUS: Record<
   string,
@@ -26,7 +25,6 @@ const STATUS: Record<
   TRANSFERRED: { label: 'Переведён', variant: 'outline' },
   COMPLETED: { label: 'Завершил', variant: 'secondary' },
   ARCHIVED: { label: 'Группа закрыта', variant: 'outline' },
-  REMOVED: { label: 'Убран из группы', variant: 'outline' },
 }
 
 const RETURNED = { label: 'Вернулся', variant: 'success' } as const

@@ -821,8 +821,6 @@ export const removeStudentFromGroup = authAction
         organizationId: ctx.session.organizationId!,
         studentId,
         groupId,
-        effectiveAt: todayYmdInTz(ctx.tz),
-        actorUserId: Number(ctx.session.user.id),
       })
       await tx.attendance.deleteMany({
         where: { studentId, lesson: { groupId } },

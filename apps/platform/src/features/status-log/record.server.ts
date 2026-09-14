@@ -96,40 +96,24 @@ export async function setStudentGroupStatusTx(
 }
 
 /**
- * «Убрать из группы»: запись удаляется, а в журнал уходит строка `REMOVED`. Журнал
- * не чистится — как откат списания пишет встречную строку, а не стирает исходную.
+ * «Удалить из группы»: ученика здесь не было — добавили по ошибке. Вместе с записью
+ * уходит и её история статусов, как экшен сносит всю посещаемость. Деньги за снятые
+ * занятия остаются в журнале движений (`WalletEntry`) с автором.
  */
 export async function removeStudentGroupTx(
   tx: Tx,
-  args: {
-    organizationId: number
-    studentId: number
-    groupId: number
-    effectiveAt: string
-    actorUserId: number | null
-  },
+  args: { organizationId: number; studentId: number; groupId: number },
 ) {
-  const { organizationId, studentId, groupId, effectiveAt } = args
-  const groupName = await groupNameTx(tx, organizationId, groupId)
-
-  const prev = await tx.studentGroup.delete({
-    where: { studentId_groupId: { studentId, groupId } },
-    select: { status: true },
+  const { organizationId, studentId, groupId } = args
+  // `deleteMany` со школой, а не `delete` по составному ключу: ключ глобален, и чужая
+  // запись удалилась бы по угаданной паре id.
+  const removed = await tx.studentGroup.deleteMany({
+    where: { studentId, groupId, organizationId },
   })
+  if (removed.count !== 1) throw new NotFoundError('Ученик в группе не найден')
 
-  await tx.statusChange.create({
-    data: {
-      entity: 'STUDENT_GROUP',
-      fromStatus: prev.status,
-      toStatus: 'REMOVED',
-      reason: 'REMOVED',
-      effectiveAt,
-      organizationId,
-      actorUserId: args.actorUserId,
-      studentId,
-      groupId,
-      groupName,
-    },
+  await tx.statusChange.deleteMany({
+    where: { entity: 'STUDENT_GROUP', studentId, groupId, organizationId },
   })
 }
 

@@ -150,8 +150,6 @@ enum StatusChangeReason {
     DISMISSED
     /// Закрыт вместе с группой: архивация или завершение.
     GROUP_CLOSED
-    /// Запись удалена из группы.
-    REMOVED
     LESSON_CANCELLED
     LESSON_RESTORED
 }

@@ -2,7 +2,7 @@
  * Журнал смены статусов (`StatusChange`) — две проверки в одном прогоне.
  *
  * 1. Ядро: зачисление → отчисление задним числом → возврат → перевод → закрытие
- *    группы → удаление из группы, отмена и восстановление урока — настоящими
+ *    группы → удаление из группы вместе с историей, отмена и восстановление урока — настоящими
  *    функциями `status-log/record.server.ts` в транзакции, которая откатывается.
  * 2. Сверка всей базы, ничего не меняет:
  *    - последняя строка сущности по `id` = колонки (`status`, `statusChangedAt`,
@@ -10,8 +10,8 @@
  *      пишет строку с датой в прошлом, но колонку всё равно переписывает. Дату
  *      приблизительной строки (зачисление, восстановленное миграцией) не сверяем;
  *    - цепочка непрерывна: `fromStatus` строки = `toStatus` предыдущей; первая строка
- *      записи в группу и строка после `REMOVED` начинаются с `null`;
- *    - у каждой живой записи `StudentGroup` журнал есть;
+ *      записи в группу начинается с `null`;
+ *    - у каждой живой записи `StudentGroup` журнал есть, а у удалённой — нет;
  *    - школа строки = школа сущности, `effectiveAt` вида `YYYY-MM-DD`.
  *
  *   pnpm --filter platform exec tsx scripts/check-status-log.ts
@@ -194,20 +194,19 @@ async function checkCore() {
         'закрытие группы — строка с прежним статусом и днём закрытия',
       )
 
-      // ─── Удаление из группы: запись уходит, журнал остаётся ──────────
-      await removeStudentGroupTx(tx, {
-        ...base,
-        groupId: groupB.id,
-        effectiveAt: '2026-09-21',
-      })
-      assert.equal(await record(groupB.id), null, 'запись удалена')
-      const afterRemove = await journal(groupB.id)
-      assert.equal(afterRemove.length, 3, 'удаление журнал не чистит')
-      assert.deepEqual(
-        [afterRemove[2]!.fromStatus, afterRemove[2]!.toStatus],
-        ['COMPLETED', 'REMOVED'],
-        'удаление — строка REMOVED',
+      // ─── Удаление из группы: запись уходит вместе с историей ─────────
+      await assert.rejects(
+        removeStudentGroupTx(tx, {
+          organizationId: organizationId + 1_000_000,
+          studentId,
+          groupId: groupB.id,
+        }),
+        'чужая школа запись не удаляет',
       )
+      await removeStudentGroupTx(tx, { organizationId, studentId, groupId: groupB.id })
+      assert.equal(await record(groupB.id), null, 'запись удалена')
+      assert.equal((await journal(groupB.id)).length, 0, 'история удалённой записи стёрта')
+      assert.equal((await journal(groupA.id)).length, 4, 'история соседней группы не тронута')
 
       // ─── Урок: отмена, повторная отмена, восстановление ──────────────
       const lesson = await tx.lesson.create({
@@ -334,7 +333,7 @@ async function checkDatabase() {
         }
         return
       }
-      const expected = !prev || prev.toStatus === 'REMOVED' ? null : prev.toStatus
+      const expected = prev ? prev.toStatus : null
       if (row.fromStatus !== expected) {
         problems.push(`${key}: строка ${row.id} из ${row.fromStatus}, ожидалось ${expected}`)
       }
@@ -371,11 +370,12 @@ async function checkDatabase() {
     }
   }
 
-  // Удалённая запись, у которой журнал не закрыт строкой REMOVED, — запись статуса мимо двери.
+  // История без записи: удаление из группы обязано стирать её вместе с записью. У
+  // удалённой группы `groupId` обнулён, и в цепочки такие строки не попадают.
   const live = new Set(records.map((sg) => `sg:${sg.studentId}:${sg.groupId}`))
-  for (const [key, chain] of chains) {
-    if (key.startsWith('sg:') && !live.has(key) && chain.at(-1)!.toStatus !== 'REMOVED') {
-      problems.push(`${key}: записи нет, а журнал не закрыт строкой REMOVED`)
+  for (const key of chains.keys()) {
+    if (key.startsWith('sg:') && !live.has(key)) {
+      problems.push(`${key}: записи в группу нет, а история осталась`)
     }
   }
 
