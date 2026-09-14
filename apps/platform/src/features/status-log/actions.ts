@@ -29,6 +29,7 @@ export const getStudentStatusTimeline = permissionAction({ student: ['read'] })
         reason: true,
         comment: true,
         effectiveAt: true,
+        approximate: true,
         createdAt: true,
         groupId: true,
         groupName: true,

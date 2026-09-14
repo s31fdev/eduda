@@ -2,8 +2,7 @@
 
 import type { StatusChangeReason, StudentStatus } from '@repo/db/enums'
 import { STUDENT_STATUS } from '@/src/features/students/status'
-import { useOrgTimezone } from '@/src/hooks/use-org-timezone'
-import { formatDateOnly, formatInTz } from '@/src/lib/timezone'
+import { formatDateOnly } from '@/src/lib/timezone'
 import { Badge } from '@repo/ui/components/badge'
 import DataTable from '@repo/ui/components/data-table'
 import { Skeleton } from '@repo/ui/components/skeleton'
@@ -24,7 +23,6 @@ const REASON_LABEL: Record<StatusChangeReason, string> = {
   REMOVED: 'Убран из группы',
   LESSON_CANCELLED: 'Урок отменён',
   LESSON_RESTORED: 'Урок восстановлен',
-  IMPORTED: 'Начало журнала',
 }
 
 /** Статус записи; `REMOVED` — псевдостатус удалённой записи, в `StudentStatus` его нет. */
@@ -39,15 +37,24 @@ const columns: ColumnDef<Row>[] = [
     id: 'date',
     header: 'Дата',
     size: 110,
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {formatDateOnly(row.original.effectiveAt, {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        })}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const date = formatDateOnly(row.original.effectiveAt, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+      // Зачисление, восстановленное по посещаемости: дата — первый урок, «не позже чем».
+      return row.original.approximate ? (
+        <span
+          className="cursor-help whitespace-nowrap tabular-nums"
+          title="Точной даты зачисления нет: это первый урок ученика в группе"
+        >
+          ≈ {date}
+        </span>
+      ) : (
+        <span className="whitespace-nowrap tabular-nums">{date}</span>
+      )
+    },
     meta: { title: 'Дата' },
   },
   {
@@ -98,7 +105,7 @@ const columns: ColumnDef<Row>[] = [
     id: 'actor',
     header: 'Кто',
     size: 160,
-    // У строк начала журнала автора нет — прочерк, а не выдуманное имя.
+    // У строк, восстановленных миграцией, автора нет — прочерк, а не выдуманное имя.
     cell: ({ row }) => row.original.actorUser?.name ?? '—',
     meta: { title: 'Кто' },
   },
@@ -110,7 +117,6 @@ const columns: ColumnDef<Row>[] = [
  */
 export default function StudentStatusTimeline({ studentId }: { studentId: number }) {
   const { data: rows = [], isLoading, isError } = useStudentStatusTimelineQuery(studentId)
-  const tz = useOrgTimezone()
 
   const table = useReactTable({
     data: rows,
@@ -122,22 +128,12 @@ export default function StudentStatusTimeline({ studentId }: { studentId: number
   if (isLoading) return <Skeleton className="h-32" />
   if (isError) return <div className="text-destructive">Ошибка при загрузке истории.</div>
 
-  // До запуска журнала колонка перезаписывалась, и прошлого у записи нет — только
-  // статус на тот день. Говорим об этом, а не показываем пустоту как «ничего не было».
-  const started = rows.findLast((r) => r.reason === 'IMPORTED')?.createdAt
-
   return (
     <div className="space-y-2">
       <h3 className="text-muted-foreground flex items-center gap-2 text-lg font-semibold">
         <History size={20} />
         История статусов
       </h3>
-      {started && (
-        <p className="text-muted-foreground text-sm">
-          Журнал ведётся с {formatInTz(started, tz, 'dd.MM.yyyy')}: у более ранних записей известен
-          только статус на этот день.
-        </p>
-      )}
       <DataTable table={table} emptyMessage="Статусы ещё не менялись." />
     </div>
   )

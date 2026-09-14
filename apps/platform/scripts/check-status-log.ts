@@ -7,7 +7,8 @@
  * 2. Сверка всей базы, ничего не меняет:
  *    - последняя строка сущности по `id` = колонки (`status`, `statusChangedAt`,
  *      `statusComment`). По `id`, а не по `effectiveAt`: отчисление задним числом
- *      пишет строку с датой в прошлом, но колонку всё равно переписывает;
+ *      пишет строку с датой в прошлом, но колонку всё равно переписывает. Дату
+ *      приблизительной строки (зачисление, восстановленное миграцией) не сверяем;
  *    - цепочка непрерывна: `fromStatus` строки = `toStatus` предыдущей; первая строка
  *      записи в группу и строка после `REMOVED` начинаются с `null`;
  *    - у каждой живой записи `StudentGroup` журнал есть;
@@ -282,6 +283,7 @@ async function checkDatabase() {
         toStatus: true,
         comment: true,
         effectiveAt: true,
+        approximate: true,
         organizationId: true,
         studentId: true,
         groupId: true,
@@ -346,8 +348,14 @@ async function checkDatabase() {
       problems.push(`${key}: у записи в группу нет журнала`)
       continue
     }
-    const actual = [last.toStatus, last.effectiveAt, last.comment, last.organizationId]
-    const expected = [sg.status, sg.statusChangedAt, sg.statusComment, sg.organizationId]
+    // У приблизительной строки дата — первый урок, а колонка хранит день загрузки:
+    // сверять их незачем, остальное обязано совпасть.
+    const actual = [last.toStatus, last.comment, last.organizationId]
+    const expected = [sg.status, sg.statusComment, sg.organizationId]
+    if (!last.approximate) {
+      actual.push(last.effectiveAt)
+      expected.push(sg.statusChangedAt)
+    }
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       problems.push(
         `${key}: последняя строка ${last.id} ${JSON.stringify(actual)}, колонки ${JSON.stringify(expected)}`,

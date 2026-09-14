@@ -536,9 +536,10 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
       statusChangedAt: todayYmd,
     })),
   })
-  // Журнал статусов в демо начинается так же, как в живых школах при запуске: одной
-  // строкой «как есть» на запись. Иначе карточка ученика показала бы пустую историю,
-  // а `check-status-log.ts` — запись без журнала.
+  // Журнал статусов — те же цепочки, что миграция восстановила живым школам: зачисление
+  // и, у закрытых записей, итоговый переход. Мимо `record.server.ts`, потому что сид
+  // обязан укладываться в батчи. Без журнала карточка ученика показала бы пустую
+  // историю, а `check-status-log.ts` — запись без журнала.
   const enrolled = await prisma.studentGroup.findMany({
     where: { organizationId: orgId },
     select: {
@@ -549,17 +550,33 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
       group: { select: GROUP_LABEL_SELECT },
     },
   })
+  const chainRow = (sg: (typeof enrolled)[number]) => ({
+    entity: 'STUDENT_GROUP' as const,
+    effectiveAt: sg.statusChangedAt,
+    organizationId: orgId,
+    studentId: sg.studentId,
+    groupId: sg.groupId,
+    groupName: getGroupName(sg.group),
+  })
+  const isLive = (sg: (typeof enrolled)[number]) => sg.status === 'ACTIVE' || sg.status === 'TRIAL'
+  // Двумя запросами: закрывающие строки получают `id` больше зачислений, и сверка
+  // «последняя строка по id = колонки» верна.
   await prisma.statusChange.createMany({
     data: enrolled.map((sg) => ({
-      entity: 'STUDENT_GROUP' as const,
-      toStatus: sg.status,
-      reason: 'IMPORTED' as const,
-      effectiveAt: sg.statusChangedAt,
-      organizationId: orgId,
-      studentId: sg.studentId,
-      groupId: sg.groupId,
-      groupName: getGroupName(sg.group),
+      ...chainRow(sg),
+      toStatus: isLive(sg) ? sg.status : 'ACTIVE',
+      reason: 'ENROLLED' as const,
     })),
+  })
+  await prisma.statusChange.createMany({
+    data: enrolled
+      .filter((sg) => !isLive(sg))
+      .map((sg) => ({
+        ...chainRow(sg),
+        fromStatus: 'ACTIVE',
+        toStatus: sg.status,
+        reason: sg.status === 'DISMISSED' ? ('DISMISSED' as const) : ('GROUP_CLOSED' as const),
+      })),
   })
 
   // Счёт и пакет заводятся парой, как в живом экшене: деньги отдельно, уроки

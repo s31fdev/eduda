@@ -24,6 +24,11 @@ model StatusChange {
     effectiveAt String
     /// Когда записали. Пара с `effectiveAt` — как у `WalletEntry`.
     createdAt   DateTime @default(now())
+    /// Дата восстановлена, а не записана в момент события: зачисление, у которого
+    /// уроки в посещаемости начались раньше, чем появилась сама запись (загрузка
+    /// данных в феврале 2026). `effectiveAt` тогда — первый урок, «не позже чем».
+    /// Живые смены статуса всегда `false`.
+    approximate Boolean  @default(false)
 
     // Relations
     organizationId Int

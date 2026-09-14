@@ -154,6 +154,4 @@ enum StatusChangeReason {
     REMOVED
     LESSON_CANCELLED
     LESSON_RESTORED
-    /// Состояние на момент запуска журнала: прошлое до него не восстановить.
-    IMPORTED
 }
