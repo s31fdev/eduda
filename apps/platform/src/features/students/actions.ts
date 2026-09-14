@@ -13,7 +13,7 @@ import { createStudentUserTx, hashStudentPassword } from '@/src/lib/student-auth
 import { isProfileEdit } from '@/src/lib/student-data'
 import { isFeatureDisabled } from '@/src/lib/features/registry'
 import { decryptStudentPassword } from '@/src/lib/student-password'
-import { getGroupName, maxBotUrl } from '@/src/lib/utils'
+import { maxBotUrl } from '@/src/lib/utils'
 import { randomInt } from 'crypto'
 import * as z from 'zod'
 import {
@@ -585,106 +585,6 @@ export const updateStudentBalanceHistory = authAction
       where: { id: parsedInput.id },
       data: parsedInput.data as Prisma.StudentLessonsBalanceHistoryUpdateInput,
     })
-  })
-
-// ─── GROUP HISTORY ───────────────────────────────────────────────────────────
-
-export type StudentGroupHistoryEntry = {
-  type: 'joined' | 'dismissed'
-  date: string
-  groupId: number
-  groupName: string
-  status?: string
-}
-
-export const getStudentGroupHistory = authAction
-  .metadata({ actionName: 'getStudentGroupHistory' })
-  .inputSchema(
-    z.object({
-      studentId: z.number().int().positive(),
-    }),
-  )
-  .action(async ({ ctx, parsedInput }): Promise<StudentGroupHistoryEntry[]> => {
-    const { studentId } = parsedInput
-    const organizationId = ctx.session.organizationId!
-
-    const [attendances, currentGroups] = await Promise.all([
-      prisma.attendance.findMany({
-        where: {
-          studentId,
-          organizationId,
-          makeupForAttendanceId: null,
-        },
-        include: {
-          lesson: {
-            include: {
-              group: {
-                include: {
-                  course: true,
-                  location: true,
-                  schedules: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { lesson: { date: 'asc' } },
-      }),
-      prisma.studentGroup.findMany({
-        where: { studentId, organizationId },
-        select: { groupId: true, status: true },
-      }),
-    ])
-
-    const currentGroupMap = new Map(currentGroups.map((sg) => [sg.groupId, sg.status]))
-
-    const groupStats = new Map<
-      number,
-      {
-        firstDate: string
-        lastDate: string
-        group: (typeof attendances)[number]['lesson']['group']
-      }
-    >()
-
-    for (const att of attendances) {
-      const gId = att.lesson.groupId
-      const date = att.lesson.date
-      const existing = groupStats.get(gId)
-      if (!existing) {
-        groupStats.set(gId, { firstDate: date, lastDate: date, group: att.lesson.group })
-      } else {
-        if (date < existing.firstDate) existing.firstDate = date
-        if (date > existing.lastDate) existing.lastDate = date
-      }
-    }
-
-    const entries: StudentGroupHistoryEntry[] = []
-
-    for (const [groupId, stats] of groupStats) {
-      const name = getGroupName(stats.group)
-
-      entries.push({
-        type: 'joined',
-        date: stats.firstDate,
-        groupId,
-        groupName: name,
-        status: currentGroupMap.get(groupId) ?? undefined,
-      })
-
-      if (!currentGroupMap.has(groupId) || currentGroupMap.get(groupId) === 'DISMISSED') {
-        entries.push({
-          type: 'dismissed',
-          date: stats.lastDate,
-          groupId,
-          groupName: name,
-        })
-      }
-    }
-
-    entries.sort((a, b) => b.date.localeCompare(a.date))
-
-    return entries
   })
 
 // ─── SHOP STATS ──────────────────────────────────────────────────────────────

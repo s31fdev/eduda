@@ -4,7 +4,7 @@ import type { StudentStatus } from '@repo/db/enums'
  * Статус ученика в группе — подпись и вид бейджа.
  *
  * Такие же карты сейчас лежат прямо в компонентах (`student-groups-section`,
- * `group-history`, `attendance-section` кабинета родителя) и наружу не торчат.
+ * `attendance-section` кабинета родителя) и наружу не торчат.
  * Новый код берёт отсюда; старые копии стоит свести сюда же отдельной правкой.
  */
 export const STUDENT_STATUS: Record<

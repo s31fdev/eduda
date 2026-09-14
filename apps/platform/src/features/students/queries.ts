@@ -4,7 +4,6 @@ import {
   createStudent,
   deleteStudent,
   getStudentDetail,
-  getStudentGroupHistory,
   getStudentLessonsBalanceHistory,
   getStudentShopStats,
   getStudentUnpaidLessons,
@@ -28,7 +27,6 @@ export const studentKeys = {
   all: ['students'] as const,
   list: (params: StudentListSchemaType) => [...studentKeys.all, 'list', params] as const,
   detail: (id: number) => ['students', 'detail', id] as const,
-  groupHistory: (studentId: number) => ['students', 'groupHistory', studentId] as const,
   balanceHistory: (studentId: number) => ['students', 'balanceHistory', studentId] as const,
   shopStats: (studentId: number) => ['students', 'shopStats', studentId] as const,
   unpaid: (studentId: number) => ['students', 'unpaid', studentId] as const,
@@ -100,17 +98,6 @@ export const useStudentDetailQuery = (id: number) => {
       const { data, serverError } = await getStudentDetail({ id })
       if (serverError) throw serverError
       return data ?? null
-    },
-  })
-}
-
-export const useStudentGroupHistoryQuery = (studentId: number) => {
-  return useQuery({
-    queryKey: studentKeys.groupHistory(studentId),
-    queryFn: async () => {
-      const { data, serverError } = await getStudentGroupHistory({ studentId })
-      if (serverError) throw serverError
-      return data ?? []
     },
   })
 }

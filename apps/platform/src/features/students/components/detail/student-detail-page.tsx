@@ -10,7 +10,7 @@ import { getFullName } from '@/src/lib/utils'
 import { useStudentDetailQuery } from '../../queries'
 import DeleteStudentDialog from './delete-student-dialog'
 import EditStudentDialog from './edit-student-dialog'
-import GroupHistory from './group-history'
+import StudentStatusTimeline from '@/src/features/status-log/components/student-status-timeline'
 import LessonsBalanceHistory from './lessons-balance-history'
 import ParentsSection from './parents-section'
 import PaymentSection from './payment-section'
@@ -100,7 +100,7 @@ export default function StudentDetailPage({ studentId }: { studentId: number }) 
             student={student}
             canCreateStudentGroup={canCreateStudentGroup?.success ?? false}
           />
-          <GroupHistory studentId={student.id} />
+          <StudentStatusTimeline studentId={student.id} />
           <FeatureGate feature="finances">
             {canEditLessonsHistory?.success && <LessonsBalanceHistory studentId={student.id} />}
           </FeatureGate>
