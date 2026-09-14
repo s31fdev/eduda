@@ -32,6 +32,8 @@ export const lessonStatusVariants = cva('', {
 export default function InfoSection() {
   const { lesson, isCancelled } = useLessonDetail()
   const { data: canEditLesson } = useOrganizationPermissionQuery({ lesson: ['update'] })
+  // У уроков, отменённых до запуска журнала, строки нет — тогда молчим.
+  const cancelled = isCancelled ? lesson.statusChanges[0] : undefined
 
   return (
     <Card className="shadow-none">
@@ -49,6 +51,8 @@ export default function InfoSection() {
             <Ban className="size-4" />
             <AlertTitle>Урок отменён</AlertTitle>
             <AlertDescription>
+              {cancelled &&
+                `Отмена: ${[cancelled.actorUser?.name, formatDateOnly(cancelled.effectiveAt)].filter(Boolean).join(', ')}. `}
               Посещаемость заблокирована. Нажмите кнопку восстановления, чтобы вернуть урок в
               активный статус.
             </AlertDescription>

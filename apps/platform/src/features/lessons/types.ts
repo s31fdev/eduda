@@ -16,6 +16,8 @@ export type LessonDetail = Prisma.LessonGetPayload<{
         groupType: { include: { rate: true } }
       }
     }
+    // Последняя смена статуса: кто и когда отменил урок.
+    statusChanges: { select: { effectiveAt: true; actorUser: { select: { name: true } } } }
     attendance: {
       include: {
         student: true

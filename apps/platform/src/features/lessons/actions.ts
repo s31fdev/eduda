@@ -52,6 +52,11 @@ export const getLessonDetail = authAction
             groupType: { include: { rate: true } },
           },
         },
+        statusChanges: {
+          orderBy: { id: 'desc' },
+          take: 1,
+          select: { effectiveAt: true, actorUser: { select: { name: true } } },
+        },
         attendance: {
           include: {
             student: true,
