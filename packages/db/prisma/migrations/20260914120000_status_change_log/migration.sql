@@ -61,8 +61,12 @@ ALTER TABLE "StatusChange" ADD CONSTRAINT "StatusChange_lessonId_fkey" FOREIGN K
 --   1. зачисление: `null → ACTIVE` (у живых сейчас — `null → их статус`);
 --   2. если запись закрыта — итоговый переход `ACTIVE → статус` с датой и
 --      комментарием из колонок: отчисление, перевод, закрытие с группой.
--- Вторая строка вставляется отдельным запросом после всех первых, поэтому её `id`
--- больше и сверка «последняя строка по id = колонки» верна сразу.
+-- Порядок `id` повторяет порядок событий: сверка берёт последнюю строку по `id`, а
+-- лента в карточке при равной дате ставит выше строку с большим `id`. Внутри дня
+-- ученика записи идут в порядке создания (`createdAt`): перевод в живом коде сначала
+-- закрывает старую запись, потом заводит новую, и цепочка «А → Б → В» за один день
+-- так и ложится — зачисление каждой записи раньше её закрытия, а закрытие раньше
+-- зачисления следующей.
 --
 -- Дата зачисления — день создания записи в поясе школы. Если уроки в посещаемости
 -- начались раньше (записи загрузки 17–27.02.2026 и те, что завели заново позже), —
@@ -74,7 +78,7 @@ ALTER TABLE "StatusChange" ADD CONSTRAINT "StatusChange_lessonId_fkey" FOREIGN K
 -- урока честной даты отмены нет, `updatedAt` двигало и обычное редактирование.
 CREATE TEMP TABLE "_enrollment" AS
 SELECT
-    sg."organizationId", sg."studentId", sg."groupId",
+    sg."organizationId", sg."studentId", sg."groupId", sg."createdAt",
     sg."status"::TEXT AS "status", sg."statusChangedAt", sg."statusComment",
     sg."status" IN ('ACTIVE', 'TRIAL') AS "live",
     COALESCE(NULLIF(g."name", ''), TRIM(c."name" || ' ' || COALESCE(s."label", ''))) AS "groupName",
@@ -108,49 +112,73 @@ LEFT JOIN LATERAL (
 -- День зачисления: самое раннее из «создана», «первый урок» и, у закрытых, «день
 -- закрытия» — иначе отчисление задним числом встало бы в ленте раньше зачисления.
 -- `LEAST` пропускает NULL.
-ALTER TABLE "_enrollment" ADD COLUMN "enrolledDay" TEXT, ADD COLUMN "approximate" BOOLEAN;
+ALTER TABLE "_enrollment"
+    ADD COLUMN "enrolledDay" TEXT, ADD COLUMN "approximate" BOOLEAN, ADD COLUMN "hop" BIGINT;
 UPDATE "_enrollment" SET
     "enrolledDay" = LEAST("createdDay", "firstLesson", CASE WHEN NOT "live" THEN "statusChangedAt" END);
 UPDATE "_enrollment" SET "approximate" = "enrolledDay" < "createdDay";
+-- Номер записи среди записей ученика по времени создания.
+UPDATE "_enrollment" e SET "hop" = r."hop"
+FROM (
+    SELECT "studentId", "groupId",
+        DENSE_RANK() OVER (PARTITION BY "studentId" ORDER BY "createdAt", "groupId") AS "hop"
+    FROM "_enrollment"
+) r
+WHERE r."studentId" = e."studentId" AND r."groupId" = e."groupId";
 
+-- `id` проставляются явно, одной нумерацией: порядок вставки из `INSERT … SELECT`
+-- стандарт не обещает. Таблица только что создана и пуста.
 INSERT INTO "StatusChange" (
-    "entity", "fromStatus", "toStatus", "reason", "comment", "effectiveAt", "approximate",
+    "id", "entity", "fromStatus", "toStatus", "reason", "comment", "effectiveAt", "approximate",
     "organizationId", "studentId", "groupId", "groupName"
 )
 SELECT
-    'STUDENT_GROUP', NULL,
-    CASE WHEN e."live" THEN e."status" ELSE 'ACTIVE' END,
-    -- Запись создана в день, когда другая запись того же ученика закрыта переводом, —
-    -- это приход переводом, а не зачисление.
-    CASE WHEN NOT e."approximate" AND EXISTS (
-        SELECT 1 FROM "StudentGroup" t
-        WHERE t."studentId" = e."studentId" AND t."groupId" <> e."groupId"
-          AND t."status" = 'TRANSFERRED' AND t."statusChangedAt" = e."createdDay"
-    ) THEN 'TRANSFERRED_IN' ELSE 'ENROLLED' END::"StatusChangeReason",
-    CASE WHEN e."live" THEN e."statusComment" END,
-    -- У живой записи строка единственная и обязана совпасть с колонкой — кроме
-    -- приблизительной, у которой колонка хранит день загрузки, а не зачисления.
-    CASE WHEN e."live" AND NOT e."approximate" THEN e."statusChangedAt" ELSE e."enrolledDay" END,
-    e."approximate",
-    e."organizationId", e."studentId", e."groupId", e."groupName"
-FROM "_enrollment" e
-ORDER BY e."organizationId", e."studentId", e."groupId";
+    ROW_NUMBER() OVER (ORDER BY r."organizationId", r."studentId", r."effectiveAt", r."sortKey"),
+    'STUDENT_GROUP', r."fromStatus", r."toStatus", r."reason", r."comment", r."effectiveAt", r."approximate",
+    r."organizationId", r."studentId", r."groupId", r."groupName"
+FROM (
+    -- Зачисление: `null → ACTIVE`, у живых записей — `null → их статус`.
+    SELECT
+        NULL AS "fromStatus",
+        CASE WHEN e."live" THEN e."status" ELSE 'ACTIVE' END AS "toStatus",
+        -- Запись создана в день, когда другая запись того же ученика закрыта переводом, —
+        -- это приход переводом, а не зачисление.
+        CASE WHEN NOT e."approximate" AND EXISTS (
+            SELECT 1 FROM "StudentGroup" t
+            WHERE t."studentId" = e."studentId" AND t."groupId" <> e."groupId"
+              AND t."status" = 'TRANSFERRED' AND t."statusChangedAt" = e."createdDay"
+        ) THEN 'TRANSFERRED_IN' ELSE 'ENROLLED' END::"StatusChangeReason" AS "reason",
+        CASE WHEN e."live" THEN e."statusComment" END AS "comment",
+        -- У живой записи строка единственная и обязана совпасть с колонкой — кроме
+        -- приблизительной, у которой колонка хранит день загрузки, а не зачисления.
+        CASE WHEN e."live" AND NOT e."approximate" THEN e."statusChangedAt" ELSE e."enrolledDay" END AS "effectiveAt",
+        e."approximate",
+        2 * e."hop" AS "sortKey",
+        e."organizationId", e."studentId", e."groupId", e."groupName"
+    FROM "_enrollment" e
 
-INSERT INTO "StatusChange" (
-    "entity", "fromStatus", "toStatus", "reason", "comment", "effectiveAt",
-    "organizationId", "studentId", "groupId", "groupName"
-)
-SELECT
-    'STUDENT_GROUP', 'ACTIVE', e."status",
-    CASE e."status"
-        WHEN 'DISMISSED' THEN 'DISMISSED'
-        WHEN 'TRANSFERRED' THEN 'TRANSFERRED_OUT'
-        ELSE 'GROUP_CLOSED'
-    END::"StatusChangeReason",
-    e."statusComment", e."statusChangedAt",
-    e."organizationId", e."studentId", e."groupId", e."groupName"
-FROM "_enrollment" e
-WHERE NOT e."live"
-ORDER BY e."organizationId", e."studentId", e."groupId";
+    UNION ALL
+
+    -- Итоговый переход закрытой записи: `ACTIVE → статус`.
+    SELECT
+        'ACTIVE',
+        e."status",
+        CASE e."status"
+            WHEN 'DISMISSED' THEN 'DISMISSED'
+            WHEN 'TRANSFERRED' THEN 'TRANSFERRED_OUT'
+            ELSE 'GROUP_CLOSED'
+        END::"StatusChangeReason",
+        e."statusComment",
+        e."statusChangedAt",
+        FALSE,
+        2 * e."hop" + 1,
+        e."organizationId", e."studentId", e."groupId", e."groupName"
+    FROM "_enrollment" e
+    WHERE NOT e."live"
+) r;
+
+-- Последовательность — за последний явный `id`. На пустой базе `MAX` даёт NULL, и
+-- `setval` ничего не трогает.
+SELECT setval(pg_get_serial_sequence('"StatusChange"', 'id'), (SELECT MAX("id") FROM "StatusChange"));
 
 DROP TABLE "_enrollment";
