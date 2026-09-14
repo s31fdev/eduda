@@ -17,6 +17,7 @@
 import { Prisma } from '@repo/db'
 import { prisma } from '@repo/db'
 import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
+import { GROUP_LABEL_SELECT, getGroupName } from '@/src/lib/utils'
 import { auth } from '@/src/lib/auth/server'
 import { createStudentUserTx, hashStudentPassword } from '@/src/lib/student-auth'
 import {
@@ -533,6 +534,31 @@ export async function seedDemoOrg(): Promise<{ organizationId: number }> {
       walletId: walletByStudent.get(st.id)!,
       status: seeds[i]!.status,
       statusChangedAt: todayYmd,
+    })),
+  })
+  // Журнал статусов в демо начинается так же, как в живых школах при запуске: одной
+  // строкой «как есть» на запись. Иначе карточка ученика показала бы пустую историю,
+  // а `check-status-log.ts` — запись без журнала.
+  const enrolled = await prisma.studentGroup.findMany({
+    where: { organizationId: orgId },
+    select: {
+      studentId: true,
+      groupId: true,
+      status: true,
+      statusChangedAt: true,
+      group: { select: GROUP_LABEL_SELECT },
+    },
+  })
+  await prisma.statusChange.createMany({
+    data: enrolled.map((sg) => ({
+      entity: 'STUDENT_GROUP' as const,
+      toStatus: sg.status,
+      reason: 'IMPORTED' as const,
+      effectiveAt: sg.statusChangedAt,
+      organizationId: orgId,
+      studentId: sg.studentId,
+      groupId: sg.groupId,
+      groupName: getGroupName(sg.group),
     })),
   })
 

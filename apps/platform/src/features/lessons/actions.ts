@@ -11,7 +11,8 @@ import {
 import { ATTENDANCE_COINS, recordCoins } from '@/src/lib/coins'
 import { ConflictError, NotFoundError } from '@/src/lib/error'
 import { authAction } from '@/src/lib/safe-action'
-import { DateOnlySchema, formatDateOnly } from '@/src/lib/timezone'
+import { setLessonStatusTx } from '@/src/features/status-log/record.server'
+import { DateOnlySchema, formatDateOnly, todayYmdInTz } from '@/src/lib/timezone'
 import { getGroupName } from '@/src/lib/utils'
 import * as z from 'zod'
 import {
@@ -105,17 +106,15 @@ export const cancelLesson = authAction
   .metadata({ actionName: 'cancelLesson' })
   .inputSchema(CancelLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
-    const lesson = await prisma.lesson.findFirst({
-      where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
-      select: { status: true },
-    })
-    if (!lesson) throw new NotFoundError('Урок не найден')
-    if (lesson.status === 'CANCELLED') throw new ConflictError('Урок уже отменён')
-
-    await prisma.lesson.update({
-      where: { id: parsedInput.id },
-      data: { status: 'CANCELLED' },
-    })
+    await prisma.$transaction((tx) =>
+      setLessonStatusTx(tx, {
+        organizationId: ctx.session.organizationId!,
+        lessonId: parsedInput.id,
+        status: 'CANCELLED',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId: Number(ctx.session.user.id),
+      }),
+    )
   })
 
 // ─── Restore Lesson ─────────────────────────────────────────────────────────
@@ -124,10 +123,15 @@ export const restoreLesson = authAction
   .metadata({ actionName: 'restoreLesson' })
   .inputSchema(RestoreLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.lesson.update({
-      where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
-      data: { status: 'ACTIVE' },
-    })
+    await prisma.$transaction((tx) =>
+      setLessonStatusTx(tx, {
+        organizationId: ctx.session.organizationId!,
+        lessonId: parsedInput.id,
+        status: 'ACTIVE',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId: Number(ctx.session.user.id),
+      }),
+    )
   })
 
 // ─── Create Attendance ───────────────────────────────────────────────────────

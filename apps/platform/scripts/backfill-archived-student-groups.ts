@@ -112,9 +112,11 @@ async function main() {
     for (const g of groups) {
       // Тот же код, что и у живой архивации, — прошлое закрывается так же, как будущее.
       const result = await closeStudentGroupsTx(tx, {
+        organizationId: g.organizationId,
         groupId: g.id,
         statusChangedAt: g.statusChangedAt!,
         status: closingStatusOf(g.status),
+        actorUserId: null,
       })
       updated += result.count
     }

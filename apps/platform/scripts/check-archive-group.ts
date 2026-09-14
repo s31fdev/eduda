@@ -107,9 +107,11 @@ async function main() {
       })
 
       await closeStudentGroupsTx(tx, {
+        organizationId,
         groupId: closing.id,
         statusChangedAt: ARCHIVED_AT,
         status: 'ARCHIVED',
+        actorUserId: null,
       })
 
       const recordOf = async (studentId: number, groupId: number) =>
@@ -168,9 +170,11 @@ async function main() {
 
       // ─── Завершение группы по-прежнему даёт выпускников ───────────────
       await closeStudentGroupsTx(tx, {
+        organizationId,
         groupId: living.id,
         statusChangedAt: ARCHIVED_AT,
         status: 'COMPLETED',
+        actorUserId: null,
       })
       assert.equal(
         (await recordOf(both.id, living.id)).status,

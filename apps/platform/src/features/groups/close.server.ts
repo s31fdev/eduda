@@ -1,5 +1,6 @@
 import type { Prisma } from '@repo/db'
 import type { StudentStatus } from '@repo/db/enums'
+import { setStudentGroupStatusTx } from '../status-log/record.server'
 
 /**
  * Закрытие группы со стороны учеников.
@@ -17,6 +18,7 @@ import type { StudentStatus } from '@repo/db/enums'
 export async function closeStudentGroupsTx(
   tx: Prisma.TransactionClient,
   args: {
+    organizationId: number
     groupId: number
     /** Календарный день закрытия (`YYYY-MM-DD`) — дата архивации или завершения. */
     statusChangedAt: string
@@ -27,15 +29,30 @@ export async function closeStudentGroupsTx(
      * поэтому ни в отток, ни в выпускники такая запись не идёт.
      */
     status: Extract<StudentStatus, 'COMPLETED' | 'ARCHIVED'>
+    actorUserId: number | null
   },
 ) {
   // Только живые записи: отчисленных и переведённых задним числом не переписываем.
-  return await tx.studentGroup.updateMany({
-    where: { groupId: args.groupId, status: { in: ['ACTIVE', 'TRIAL'] } },
-    data: {
-      status: args.status,
-      statusChangedAt: args.statusChangedAt,
-      statusComment: null,
+  // По одной, а не `updateMany`: в пачке теряется прежний статус каждой записи, а
+  // журналу он нужен. Строк — размер группы.
+  const live = await tx.studentGroup.findMany({
+    where: {
+      groupId: args.groupId,
+      organizationId: args.organizationId,
+      status: { in: ['ACTIVE', 'TRIAL'] },
     },
+    select: { studentId: true },
   })
+  for (const { studentId } of live) {
+    await setStudentGroupStatusTx(tx, {
+      organizationId: args.organizationId,
+      studentId,
+      groupId: args.groupId,
+      status: args.status,
+      reason: 'GROUP_CLOSED',
+      effectiveAt: args.statusChangedAt,
+      actorUserId: args.actorUserId,
+    })
+  }
+  return { count: live.length }
 }

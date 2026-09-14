@@ -2,9 +2,11 @@
 
 import { Prisma, prisma } from '@repo/db'
 import { unchargeAttendancesTx } from '@/src/features/finances/ledger.server'
+import { ConflictError } from '@/src/lib/error'
 import { authAction, permissionAction } from '@/src/lib/safe-action'
 import { todayYmdInTz } from '@/src/lib/timezone'
 import * as z from 'zod'
+import { removeStudentGroupTx, setStudentGroupStatusTx } from '../status-log/record.server'
 import { closeStudentGroupsTx } from './close.server'
 import { GROUP_LIST_SELECT, type GroupListResult } from './types'
 import {
@@ -327,15 +329,15 @@ export const createGroup = authAction
             })
             walletId = wallet.id
           }
-          await tx.studentGroup.create({
-            data: {
-              organizationId: orgId,
-              groupId: group.id,
-              studentId: st.studentId,
-              status: 'ACTIVE',
-              statusChangedAt: today,
-              ...(walletId ? { walletId } : {}),
-            },
+          await setStudentGroupStatusTx(tx, {
+            organizationId: orgId,
+            studentId: st.studentId,
+            groupId: group.id,
+            status: 'ACTIVE',
+            reason: 'ENROLLED',
+            effectiveAt: today,
+            actorUserId: Number(ctx.session.user.id),
+            walletId,
           })
         }
 
@@ -414,9 +416,11 @@ export const archiveGroup = authAction
       })
 
       await closeStudentGroupsTx(tx, {
+        organizationId: ctx.session.organizationId!,
         groupId,
         statusChangedAt: statusChangedAtYmd,
         status: 'ARCHIVED',
+        actorUserId: Number(ctx.session.user.id),
       })
 
       if (deleteFutureLessons) {
@@ -456,9 +460,11 @@ export const completeGroup = authAction
       })
 
       await closeStudentGroupsTx(tx, {
+        organizationId: ctx.session.organizationId!,
         groupId,
         statusChangedAt: statusChangedAtYmd,
         status: 'COMPLETED',
+        actorUserId: Number(ctx.session.user.id),
       })
 
       if (deleteFutureLessons) {
@@ -731,6 +737,15 @@ export const addStudentToGroup = authAction
     const { groupId, studentId, walletId, isApplyToLesson, newWalletName } = parsedInput
 
     return await prisma.$transaction(async (tx) => {
+      // Запись уже есть (отчислен, переведён, закрыт с группой) — это не зачисление, а
+      // возврат, и он живёт в карточке ученика. Без проверки дверь журнала молча
+      // переписала бы запись вместо прежнего отказа по первичному ключу.
+      const existing = await tx.studentGroup.findUnique({
+        where: { studentId_groupId: { studentId, groupId } },
+        select: { status: true },
+      })
+      if (existing) throw new ConflictError('Ученик уже был в этой группе')
+
       let effectiveWalletId = walletId
 
       if (newWalletName !== undefined) {
@@ -744,15 +759,15 @@ export const addStudentToGroup = authAction
         effectiveWalletId = newWallet.id
       }
 
-      await tx.studentGroup.create({
-        data: {
-          organizationId: orgId,
-          groupId,
-          studentId,
-          status: 'ACTIVE',
-          statusChangedAt: todayYmdInTz(ctx.tz),
-          ...(effectiveWalletId ? { walletId: effectiveWalletId } : {}),
-        },
+      await setStudentGroupStatusTx(tx, {
+        organizationId: orgId,
+        studentId,
+        groupId,
+        status: 'ACTIVE',
+        reason: 'ENROLLED',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId: Number(ctx.session.user.id),
+        walletId: effectiveWalletId,
       })
 
       if (!isApplyToLesson) return
@@ -793,7 +808,7 @@ export const removeStudentFromGroup = authAction
       // только неотмеченные будущие строки). Деньги за эти занятия возвращаем —
       // занятий больше нет ни в истории, ни в отчётах.
       //
-      // До `studentGroup.delete`, а не после: кошелёк списания у обычной строки
+      // До `removeStudentGroupTx`, а не после: кошелёк списания у обычной строки
       // ищется через запись в группу, и без неё возврат был бы тише, чем нужно.
       await unchargeAttendancesTx(tx, {
         where: { studentId, lesson: { groupId } },
@@ -802,8 +817,12 @@ export const removeStudentFromGroup = authAction
         meta: { removed: 'studentFromGroup', groupId },
       })
 
-      await tx.studentGroup.delete({
-        where: { studentId_groupId: { studentId, groupId } },
+      await removeStudentGroupTx(tx, {
+        organizationId: ctx.session.organizationId!,
+        studentId,
+        groupId,
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId: Number(ctx.session.user.id),
       })
       await tx.attendance.deleteMany({
         where: { studentId, lesson: { groupId } },
@@ -821,15 +840,15 @@ export const dismissStudentFromGroup = authAction
       await tx.group.findFirstOrThrow({
         where: { id: groupId, organizationId: ctx.session.organizationId! },
       })
-      await tx.studentGroup.update({
-        where: {
-          studentId_groupId: { studentId, groupId },
-        },
-        data: {
-          status: 'DISMISSED',
-          statusComment: comment,
-          statusChangedAt,
-        },
+      await setStudentGroupStatusTx(tx, {
+        organizationId: ctx.session.organizationId!,
+        studentId,
+        groupId,
+        status: 'DISMISSED',
+        reason: 'DISMISSED',
+        effectiveAt: statusChangedAt,
+        comment,
+        actorUserId: Number(ctx.session.user.id),
       })
 
       const todayDate = todayYmdInTz(ctx.tz)
@@ -870,44 +889,36 @@ export const transferStudent = authAction
       const { getGroupName } = await import('@/src/lib/utils')
       const newGroupName = getGroupName(newGroup)
 
-      await tx.studentGroup.update({
-        where: { studentId_groupId: { studentId, groupId: oldGroupId } },
-        data: {
-          status: 'TRANSFERRED',
-          statusChangedAt: todayYmdInTz(ctx.tz),
-          statusComment: `Переведён в группу ${newGroupName}`,
-        },
+      const actorUserId = Number(ctx.session.user.id)
+      await setStudentGroupStatusTx(tx, {
+        organizationId: orgId,
+        studentId,
+        groupId: oldGroupId,
+        status: 'TRANSFERRED',
+        reason: 'TRANSFERRED_OUT',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        comment: `Переведён в группу ${newGroupName}`,
+        actorUserId,
       })
 
       const existingSg = await tx.studentGroup.findUnique({
         where: { studentId_groupId: { studentId, groupId: newGroupId } },
       })
-
-      if (existingSg) {
-        if (existingSg.status === 'ACTIVE' || existingSg.status === 'TRIAL') {
-          throw new Error('Ученик уже в этой группе')
-        }
-        await tx.studentGroup.update({
-          where: { studentId_groupId: { studentId, groupId: newGroupId } },
-          data: {
-            status: 'ACTIVE',
-            statusComment: null,
-            statusChangedAt: todayYmdInTz(ctx.tz),
-            walletId: oldSg.walletId,
-          },
-        })
-      } else {
-        await tx.studentGroup.create({
-          data: {
-            studentId,
-            groupId: newGroupId,
-            organizationId: orgId,
-            status: 'ACTIVE',
-            statusChangedAt: todayYmdInTz(ctx.tz),
-            walletId: oldSg.walletId,
-          },
-        })
+      if (existingSg?.status === 'ACTIVE' || existingSg?.status === 'TRIAL') {
+        throw new Error('Ученик уже в этой группе')
       }
+
+      // Запись в новой группе создаётся или, если он там уже бывал, оживает.
+      await setStudentGroupStatusTx(tx, {
+        organizationId: orgId,
+        studentId,
+        groupId: newGroupId,
+        status: 'ACTIVE',
+        reason: 'TRANSFERRED_IN',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId,
+        walletId: oldSg.walletId,
+      })
 
       await tx.attendance.deleteMany({
         where: { studentId, status: 'UNSPECIFIED', lesson: { groupId: oldGroupId } },

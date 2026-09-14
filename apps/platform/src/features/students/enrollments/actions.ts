@@ -1,5 +1,6 @@
 'use server'
 
+import { setStudentGroupStatusTx } from '@/src/features/status-log/record.server'
 import { bucketKey } from '@/src/lib/chart-buckets'
 import { ForbiddenError } from '@/src/lib/error'
 import { permissionAction } from '@/src/lib/safe-action'
@@ -407,13 +408,15 @@ export const returnToGroup = permissionAction({ studentGroup: ['update'] })
         orderBy: { lesson: { date: 'desc' } },
       })
 
-      await tx.studentGroup.update({
-        where: { studentId_groupId: { studentId, groupId } },
-        data: {
-          status: 'ACTIVE',
-          statusComment: null,
-          statusChangedAt: todayYmdInTz(ctx.tz),
-        },
+      // Комментарий об уходе колонка теряет, а журнал — нет: он остался в строке отчисления.
+      await setStudentGroupStatusTx(tx, {
+        organizationId,
+        studentId,
+        groupId,
+        status: 'ACTIVE',
+        reason: 'RETURNED',
+        effectiveAt: todayYmdInTz(ctx.tz),
+        actorUserId: Number(ctx.session.user.id),
       })
 
       // Ученик возвращается на всё, что прошло мимо него: с урока после последнего
