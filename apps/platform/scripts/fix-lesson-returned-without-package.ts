@@ -14,11 +14,12 @@
  * `takeBackLessonReturnedWithoutPackageTx` — мимо ядра баланс не двигается. Выручка
  * не меняется: 687 ₽ за 02.05 откат уже снял и со строки, и из журнала.
  *
- * Баланс станет равен остатку пакета 3911. Урок из этого пакета ушёл не на откат, а
- * на 23.05: отмеченное 12.09 занятие списалось обычным порядком, по 712 ₽, — так
- * платится любое занятие, которое ждало оплаты. Если школа считает перестановку
- * суббот нейтральной, урок возвращается подарочным пакетом; это её решение, и
- * правка его не принимает.
+ * После этого баланс равен остатку пакета 3911 — 4. Урок из пакета ушёл не на откат,
+ * а на 23.05: отмеченное 12.09 занятие списалось обычным порядком, по 712 ₽, — так
+ * платится любое занятие, которое ждало оплаты. Перестановка суббот не должна стоить
+ * ученику урока (решение 15.09.2026), поэтому следом кошелёк получает подарочный
+ * пакет на 1 урок за 0 ₽ — обычной выдачей, `activatePackageTx`: 5 уроков на
+ * балансе и 5 в пакетах, как было бы без перестановки.
  *
  * Откаты ищутся по всей базе, а не по номеру: пока исправление не выкачено, каждый
  * снятый урок «в долг» оставляет ещё один. Нашлось не то, что разобрано руками, —
@@ -31,12 +32,22 @@ import './load-env'
 
 import assert from 'node:assert/strict'
 import { type Prisma, prisma } from '@repo/db'
-import { takeBackLessonReturnedWithoutPackageTx } from '../src/features/finances/ledger.server'
+import {
+  activatePackageTx,
+  takeBackLessonReturnedWithoutPackageTx,
+} from '../src/features/finances/ledger.server'
 
 const APPLY = process.argv.includes('--apply')
 
 /** Разобранные откаты: номер, кошелёк, ученик — защита от опечатки и от сюрпризов. */
 const EXPECTED = [[23067, 681, 'Орлов Юрий 8 кл']]
+
+/** Урок, который перестановка суббот забрала из пакета 3911. */
+const GIFT = {
+  walletId: 681,
+  date: '2026-09-15',
+  productName: 'Подарок: урок за исправление отметок 02.05 и 23.05',
+}
 
 class Rollback extends Error {}
 
@@ -127,7 +138,7 @@ async function main() {
     'нашлись не те откаты, что разобраны руками — разобрать, прежде чем чинить',
   )
 
-  const walletIds = [...new Set(found.map((r) => r.walletId))]
+  const walletIds = [...new Set([...found.map((r) => r.walletId), GIFT.walletId])]
   const before = await snapshot(prisma, walletIds)
   show('Сейчас', before)
 
@@ -141,13 +152,43 @@ async function main() {
         })
       }
 
+      const wallet = await tx.wallet.findUniqueOrThrow({
+        where: { id: GIFT.walletId },
+        select: { organizationId: true, studentId: true },
+      })
+      const gift = await tx.package.create({
+        data: {
+          organizationId: wallet.organizationId,
+          studentId: wallet.studentId,
+          walletId: GIFT.walletId,
+          date: GIFT.date,
+          productName: GIFT.productName,
+          lessonCount: 1,
+          remaining: 1,
+          price: 0,
+          unitPrice: 0,
+        },
+        select: { id: true },
+      })
+      const settled = await activatePackageTx(tx, {
+        packageId: gift.id,
+        organizationId: wallet.organizationId,
+        actorUserId: null,
+      })
+      assert.equal(settled, 0, 'подарок ушёл на неоплаченное занятие, а не на баланс')
+
       // ── Инварианты внутри транзакции ─────────────────────────────────────────
       const after = await snapshot(tx, walletIds)
       for (const [i, w] of after.entries()) {
         const was = before[i]!
+        const gifted = w.walletId === GIFT.walletId ? 1 : 0
         assert.equal(w.balance, w.remaining, `кошелёк ${w.walletId}: баланс ≠ Σ остатков`)
         assert.equal(w.ledger, w.balance, `кошелёк ${w.walletId}: Σ журнала ≠ баланс`)
-        assert.equal(w.remaining, was.remaining, `кошелёк ${w.walletId}: сдвинулись остатки`)
+        assert.equal(
+          w.remaining,
+          was.remaining + gifted,
+          `кошелёк ${w.walletId}: остатки сдвинулись не на подарок`,
+        )
         assert.equal(w.revenue, was.revenue, `кошелёк ${w.walletId}: сдвинулась выручка`)
       }
       assert.equal((await staleReversals(tx)).length, 0, 'остались непочиненные откаты')
