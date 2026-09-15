@@ -17,6 +17,7 @@ import {
   activatePackageTx,
   chargeAttendanceTx,
   settleUnpaidAttendancesTx,
+  takeBackLessonReturnedWithoutPackageTx,
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
@@ -100,12 +101,17 @@ async function main() {
        * же, что зовёт экшен: очередь, баланс, журнал и история получаются ровно
        * такими, какими их делает живой код.
        */
-      const packet = async (date: string, price: number, lessonCount: number) => {
+      const packet = async (
+        date: string,
+        price: number,
+        lessonCount: number,
+        walletId = wallet.id,
+      ) => {
         const created = await tx.package.create({
           data: {
             organizationId,
             studentId: student.id,
-            walletId: wallet.id,
+            walletId,
             date,
             price,
             lessonCount,
@@ -151,6 +157,17 @@ async function main() {
       const ledgerSum = async (id = wallet.id) =>
         (await tx.walletEntry.aggregate({ where: { walletId: id }, _sum: { quantity: true } }))._sum
           .quantity ?? 0
+      /** Σ остатков выданных пакетов — то, чему обязан равняться баланс кошелька. */
+      const remainingSum = async (walletId: number) =>
+        (
+          await tx.package.aggregate({
+            where: { walletId, status: 'ACTIVE' },
+            _sum: { remaining: true },
+          })
+        )._sum.remaining ?? 0
+      /** Выручка занятия по журналу — так её считает `check-ledger.ts`. */
+      const revenueOf = async (attendanceId: number) =>
+        (await ledgerOf(attendanceId)).reduce((sum, e) => sum - e.quantity * e.unitPrice, 0)
 
       const charge = (attendanceId: number) =>
         chargeAttendanceTx(tx, { attendanceId, organizationId, actorUserId: null })
@@ -418,9 +435,112 @@ async function main() {
       )
       assert.equal(await remainingOf(cancelled.id), 0, 'и в отменённый пакет он не кладётся')
 
-      const cancelLedger = await ledgerOf(spent)
-      assert.equal(cancelLedger.length, 2, 'несостоявшийся возврат — тоже событие журнала')
-      assert.equal(cancelLedger[1]!.quantity, 0, 'но нулевое: урок никуда не двинулся')
+      assert.deepEqual(
+        (await ledgerOf(spent)).map((e) => [e.kind, e.quantity]),
+        [
+          ['CHARGE', -1],
+          ['REVERSAL', 1],
+          ['ADJUSTMENT', -1],
+        ],
+        'откат зеркалит списание, а урок, которому некуда вернуться, снимает корректировка',
+      )
+      assert.equal(await revenueOf(spent), 0, 'выручка уходит из журнала вместе с ценой строки')
+
+      // ─── Откат списания «в долг», сделанного до перехода ───────────────
+      // Так бэкфилл оставил занятия, под которые не нашлось оплаты: цена на строке,
+      // пакета нет, в журнале списание без пакета и корректировка сальдо, которая
+      // его погасила. Урок вернуть некуда — 12.09.2026 он вернулся на баланс мимо
+      // пакетов, и check-wallet-balance покраснел.
+      const debtWallet = await tx.wallet.create({
+        data: { organizationId, studentId: student.id },
+        select: { id: true },
+      })
+      /** Строка журнала мимо ядра — так её писали бэкфилл и старый откат. */
+      const legacyEntry = (data: {
+        kind: WalletEntryKind
+        quantity: number
+        unitPrice?: number
+        attendanceId?: number
+        reversalOfId?: number
+      }) =>
+        tx.walletEntry.create({
+          data: {
+            organizationId,
+            walletId: debtWallet.id,
+            studentId: student.id,
+            effectiveAt: '2026-05-02',
+            ...data,
+          },
+          select: { id: true },
+        })
+
+      const debt = await visit({ walletId: debtWallet.id })
+      await tx.attendance.update({ where: { id: debt }, data: { price: 700 } })
+      await legacyEntry({ kind: 'CHARGE', quantity: -1, unitPrice: 700, attendanceId: debt })
+      await legacyEntry({ kind: 'ADJUSTMENT', quantity: 1 })
+      const d = await packet('2027-07-01', 8_000, 8, debtWallet.id) // 1000 ₽ за урок
+      assert.equal(d.settled, 0, 'оценённое «в долг» занятие оплату не ждёт')
+
+      await tx.attendance.update({ where: { id: debt }, data: { status: 'UNSPECIFIED' } })
+      await uncharge(debt)
+      assert.equal((await entryOf(debt)).price, null, 'проводка снимается и без пакета')
+      assert.equal(await balance(debtWallet.id), 8, 'урок не возвращается на баланс')
+      assert.equal(await remainingOf(d.id), 8, 'и в чужой пакет не кладётся')
+      assert.equal(
+        await balance(debtWallet.id),
+        await remainingSum(debtWallet.id),
+        'баланс обязан равняться Σ остатков пакетов',
+      )
+      assert.equal(await ledgerSum(debtWallet.id), 8, 'Σ журнала = баланс')
+      assert.equal(await revenueOf(debt), 0, 'выручка ушла из журнала вместе с ценой строки')
+
+      // Снова отмеченное занятие списывается обычным порядком — один раз, из пакета.
+      await tx.attendance.update({ where: { id: debt }, data: { status: 'PRESENT' } })
+      await charge(debt)
+      assert.deepEqual(await entryOf(debt), { packageId: d.id, price: 1000, amount: 1 })
+      assert.equal(await balance(debtWallet.id), 7, 'повторная отметка стоит ровно один урок')
+      assert.equal(await balance(debtWallet.id), await remainingSum(debtWallet.id))
+      assert.equal(await ledgerSum(debtWallet.id), 7)
+
+      // ─── Починка отката, записанного до исправления ────────────────────
+      // Воспроизводим, что делал старый откат: урок ушёл на баланс мимо пакетов.
+      const stale = await visit({ walletId: debtWallet.id })
+      await tx.attendance.update({ where: { id: stale }, data: { status: 'UNSPECIFIED' } })
+      const staleCharge = await legacyEntry({
+        kind: 'CHARGE',
+        quantity: -1,
+        unitPrice: 700,
+        attendanceId: stale,
+      })
+      await legacyEntry({ kind: 'ADJUSTMENT', quantity: 1 })
+      const staleReversal = await legacyEntry({
+        kind: 'REVERSAL',
+        quantity: 1,
+        unitPrice: 700,
+        attendanceId: stale,
+        reversalOfId: staleCharge.id,
+      })
+      await tx.wallet.update({
+        where: { id: debtWallet.id },
+        data: { lessonsBalance: { increment: 1 } },
+      })
+      assert.equal(await balance(debtWallet.id), (await remainingSum(debtWallet.id)) + 1)
+
+      const takeBack = () =>
+        takeBackLessonReturnedWithoutPackageTx(tx, {
+          reversalId: staleReversal.id,
+          organizationId,
+          actorUserId: null,
+        })
+      await takeBack()
+      assert.equal(
+        await balance(debtWallet.id),
+        await remainingSum(debtWallet.id),
+        'починка снимает урок, который старый откат вернул мимо пакетов',
+      )
+      assert.equal(await ledgerSum(debtWallet.id), await balance(debtWallet.id), 'через журнал')
+      assert.equal(await revenueOf(stale), 0, 'выручку корректировка не трогает')
+      await assert.rejects(takeBack, /не возвращал урок/, 'второй раз тот же откат не чинится')
 
       // ─── Журнал сходится с остатком кошелька ───────────────────────────
       assert.equal(
