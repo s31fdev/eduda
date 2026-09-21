@@ -15,6 +15,9 @@ export const REVENUE_LIST_SELECT = {
   price: true,
   // Не колонка: по нему `revenueKindOf` отличает отработку от обычного занятия.
   makeupForAttendanceId: true,
+  // Тоже не колонка: строка на 0 ₽ иначе неотличима от обычного занятия,
+  // отданного бесплатно, — бейдж «Пробный» рисуется по этому полю.
+  isTrial: true,
   student: { select: { id: true, firstName: true, lastName: true } },
   lesson: {
     select: {

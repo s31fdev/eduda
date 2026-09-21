@@ -43,6 +43,8 @@ export type AttendanceForActions = {
   studentId: number
   lessonId: number
   isTrial: boolean
+  /** Кошелёк, выбранный на самой строке: у пробного он и значит «платное». */
+  walletId: number | null
   makeupForAttendanceId: number | null
   student: {
     firstName: string

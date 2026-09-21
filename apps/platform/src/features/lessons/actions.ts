@@ -6,11 +6,13 @@ import { prisma } from '@repo/db'
 import {
   chargeAttendanceTx,
   isLessonCharged,
+  syncAttendanceChargeTx,
+  syncTrialPriceTx,
   unchargeAttendanceTx,
 } from '@/src/features/finances/ledger.server'
 import { ATTENDANCE_COINS, recordCoins } from '@/src/lib/coins'
-import { ConflictError, NotFoundError } from '@/src/lib/error'
-import { authAction } from '@/src/lib/safe-action'
+import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
+import { authAction, hasPermission, permissionAction } from '@/src/lib/safe-action'
 import { setLessonStatusTx } from '@/src/features/status-log/record.server'
 import { DateOnlySchema, formatDateOnly, todayYmdInTz } from '@/src/lib/timezone'
 import { getGroupName } from '@/src/lib/utils'
@@ -20,11 +22,15 @@ import {
   CancelLessonSchema,
   CreateAttendanceSchema,
   CreateMakeupSchema,
+  DELETE_ATTENDANCE_PERMISSION,
   DeleteAttendanceByIdSchema,
   DeleteAttendanceSchema,
   DeleteTeacherLessonSchema,
   EditLessonSchema,
   EditTeacherLessonSchema,
+  MANAGE_ATTENDANCE_PERMISSION,
+  MARK_ATTENDANCE_PERMISSION,
+  PAID_TRIAL_PERMISSION,
   RescheduleMakeupSchema,
   RestoreLessonSchema,
   UpdateAttendanceCommentSchema,
@@ -94,7 +100,7 @@ export const getLessonsByDate = authAction
 
 // ─── Edit Lesson ─────────────────────────────────────────────────────────────
 
-export const updateLesson = authAction
+export const updateLesson = permissionAction({ lesson: ['update'] })
   .metadata({ actionName: 'updateLesson' })
   .inputSchema(EditLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -107,7 +113,7 @@ export const updateLesson = authAction
 
 // ─── Cancel Lesson ───────────────────────────────────────────────────────────
 
-export const cancelLesson = authAction
+export const cancelLesson = permissionAction({ lesson: ['update'] })
   .metadata({ actionName: 'cancelLesson' })
   .inputSchema(CancelLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -124,7 +130,7 @@ export const cancelLesson = authAction
 
 // ─── Restore Lesson ─────────────────────────────────────────────────────────
 
-export const restoreLesson = authAction
+export const restoreLesson = permissionAction({ lesson: ['update'] })
   .metadata({ actionName: 'restoreLesson' })
   .inputSchema(RestoreLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -141,7 +147,7 @@ export const restoreLesson = authAction
 
 // ─── Create Attendance ───────────────────────────────────────────────────────
 
-export const createAttendance = authAction
+export const createAttendance = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'createAttendance' })
   .inputSchema(CreateAttendanceSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -151,6 +157,16 @@ export const createAttendance = authAction
     })
     if (lesson?.status === 'CANCELLED') {
       throw new ConflictError('Нельзя добавить ученика в отменённый урок')
+    }
+
+    // Платное пробное — операция с деньгами, её право у менеджера и выше. Разовый
+    // визит обычного занятия с кошельком сюда не относится: так было и раньше.
+    if (
+      parsedInput.isTrial &&
+      parsedInput.walletId &&
+      !hasPermission(ctx.session, PAID_TRIAL_PERMISSION)
+    ) {
+      throw new ForbiddenError('Добавить платное пробное может только менеджер')
     }
 
     // Разовое посещение без кошелька оплатить нечем: списание ищет кошелёк по
@@ -244,7 +260,7 @@ const getLessonsBalanceDelta = (
   return isCharged ? -1 : +1
 }
 
-export const updateAttendanceStatus = authAction
+export const updateAttendanceStatus = permissionAction(MARK_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'updateAttendanceStatus' })
   .inputSchema(UpdateAttendanceStatusSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -304,22 +320,25 @@ export const updateAttendanceStatus = authAction
         data: { status, isWarned: nextIsWarned, parentMarkedAt: null },
       })
 
-      if (oldAttendance.isTrial) return
-
-      await updateCoins(
-        tx,
-        status as AttendanceStatus,
-        oldAttendance.status,
-        oldAttendance.studentId,
-        ctx.session.organizationId!,
-        oldAttendance.id,
-      )
+      // Коины за пробное не начисляются, за любое: награда — за учёбу в группе, а
+      // пробное занятие ученику ещё ничего не обещает. Деньги при этом идут своим
+      // чередом: платное пробное (кошелёк выбран на строке) списывается как
+      // обычное занятие, бесплатное упирается в отсутствие кошелька.
+      if (!oldAttendance.isTrial) {
+        await updateCoins(
+          tx,
+          status as AttendanceStatus,
+          oldAttendance.status,
+          oldAttendance.studentId,
+          ctx.session.organizationId!,
+          oldAttendance.id,
+        )
+      }
 
       const delta = getLessonsBalanceDelta(oldAttendance, {
         status: status as AttendanceStatus,
         isWarned: nextIsWarned,
       })
-      if (delta === 0) return
 
       const money = {
         attendanceId: oldAttendance.id,
@@ -337,64 +356,89 @@ export const updateAttendanceStatus = authAction
       }
 
       if (delta < 0) await chargeAttendanceTx(tx, money)
-      else await unchargeAttendanceTx(tx, money)
+      else if (delta > 0) await unchargeAttendanceTx(tx, money)
+
+      // Ноль бесплатного пробного идёт последним: списание выше могло стереть
+      // цену на строке, которой нечем платить, и вернуть её обязано это правило.
+      await syncTrialPriceTx(tx, money)
     })
   })
 
 // ─── Update Attendance Student Status ────────────────────────────────────────
 
 /**
- * Пробное вне денег, поэтому галочка обязана двигать их вместе с собой.
+ * Галочка «пробное» и кошелёк, которым за пробное платят.
  *
- * Отметка статуса у пробного до денежных функций не доходит (`isTrial` — ранний
- * выход в `updateAttendanceStatus`), так что снятая позже галочка оставляла бы
- * проведённое занятие без цены навсегда: «ждёт оплаты» при полном кошельке.
- * Обратное направление симметрично: занятие, ставшее пробным, не имеет права
- * держать списание — за пробное школа денег не берёт.
+ * Платное пробное — у «Алгоритмики» это «Эра инженеров» за 300 ₽ — отличается от
+ * бесплатного одним: кошельком, выбранным на самой строке. Выбран — занятие
+ * списывается из очереди его пакетов, как обычное, и попадает в выручку своей
+ * ценой; не выбран — остаётся бесплатным и держит ноль. Галочка при этом остаётся
+ * на месте в обоих случаях: это тип визита, а не признак оплаты.
+ *
+ * Обе перемены меняют не статус занятия, а то, чем оно платится, поэтому деньги
+ * приводит в порядок `syncAttendanceChargeTx`: он сам решает, списать или снять,
+ * и сам возвращает ноль бесплатному.
  *
  * Коины остаются на месте намеренно: награда за посещение уже могла быть
  * потрачена, и её пересчёт — отдельное решение школы, а не следствие галочки.
  */
-export const updateAttendanceTrialStatus = authAction
+export const updateAttendanceTrialStatus = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'updateAttendanceTrialStatus' })
   .inputSchema(UpdateAttendanceTrialStatusSchema)
   .action(async ({ ctx, parsedInput }) => {
     await prisma.$transaction(async (tx) => {
       const attendance = await tx.attendance.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
-        select: {
-          id: true,
-          status: true,
-          isWarned: true,
-          isTrial: true,
-          makeupForAttendanceId: true,
-        },
+        select: { id: true, studentId: true, isTrial: true, walletId: true },
       })
       if (!attendance) throw new NotFoundError('Запись посещаемости не найдена')
-      if (attendance.isTrial === parsedInput.isTrial) return
+
+      // `undefined` — кошелёк не трогаем (галочку переключили оттуда, где его не
+      // спрашивают), `null` — «бесплатное», число — этим кошельком и платим.
+      const walletId =
+        parsedInput.walletId === undefined ? attendance.walletId : parsedInput.walletId
+
+      // Кошелёк на строке пробного и есть его платность. Менять её — право
+      // менеджера и выше; галочку «пробное» саму по себе может ставить и
+      // преподаватель, окно у него кошелёк не присылает.
+      if (walletId !== attendance.walletId && !hasPermission(ctx.session, PAID_TRIAL_PERMISSION)) {
+        throw new ForbiddenError('Делать пробное платным или бесплатным может только менеджер')
+      }
+
+      if (walletId !== null && walletId !== attendance.walletId) {
+        // Кошелёк приходит из браузера: без проверки строке можно было бы
+        // приписать чужой — и чужой школы, и чужого ученика.
+        const wallet = await tx.wallet.findFirst({
+          where: {
+            id: walletId,
+            studentId: attendance.studentId,
+            organizationId: ctx.session.organizationId!,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        })
+        if (!wallet) throw new NotFoundError('Кошелёк не найден')
+      }
+
+      if (attendance.isTrial === parsedInput.isTrial && attendance.walletId === walletId) return
 
       await tx.attendance.update({
         where: { id: attendance.id },
-        data: { isTrial: parsedInput.isTrial },
+        data: { isTrial: parsedInput.isTrial, walletId },
       })
 
-      // Статус, который ничего не стоит, деньгами и не двигается.
-      if (!isLessonCharged(attendance)) return
-
-      const money = {
+      await syncAttendanceChargeTx(tx, {
         attendanceId: attendance.id,
         organizationId: ctx.session.organizationId!,
         actorUserId: Number(ctx.session.user.id),
-        meta: { isTrial: parsedInput.isTrial },
-      }
-      if (parsedInput.isTrial) await unchargeAttendanceTx(tx, money)
-      else await chargeAttendanceTx(tx, money)
+        meta: { isTrial: parsedInput.isTrial, walletId },
+      })
     })
   })
 
 // ─── Update Attendance Comment ───────────────────────────────────────────────
 
-export const updateAttendanceComment = authAction
+export const updateAttendanceComment = permissionAction(MARK_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'updateAttendanceComment' })
   .inputSchema(UpdateAttendanceCommentSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -412,7 +456,7 @@ export const updateAttendanceComment = authAction
 
 // ─── Delete Attendance ───────────────────────────────────────────────────────
 
-export const deleteAttendance = authAction
+export const deleteAttendance = permissionAction(DELETE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'deleteAttendance' })
   .inputSchema(DeleteAttendanceSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -446,7 +490,7 @@ export const deleteAttendance = authAction
     })
   })
 
-export const deleteAttendanceById = authAction
+export const deleteAttendanceById = permissionAction(DELETE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'deleteAttendanceById' })
   .inputSchema(DeleteAttendanceByIdSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -469,7 +513,7 @@ export const deleteAttendanceById = authAction
 
 // ─── Create Makeup ───────────────────────────────────────────────────────────
 
-export const createMakeup = authAction
+export const createMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'createMakeup' })
   .inputSchema(CreateMakeupSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -513,7 +557,7 @@ export const createMakeup = authAction
 
 // ─── Reschedule Makeup ───────────────────────────────────────────────────────
 
-export const rescheduleMakeup = authAction
+export const rescheduleMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'rescheduleMakeup' })
   .inputSchema(RescheduleMakeupSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -546,7 +590,7 @@ export const rescheduleMakeup = authAction
 
 // ─── Teacher Lesson ──────────────────────────────────────────────────────────
 
-export const createTeacherLesson = authAction
+export const createTeacherLesson = permissionAction({ teacherLesson: ['create'] })
   .metadata({ actionName: 'createTeacherLesson' })
   .inputSchema(AddTeacherToLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -561,7 +605,7 @@ export const createTeacherLesson = authAction
     })
   })
 
-export const updateTeacherLesson = authAction
+export const updateTeacherLesson = permissionAction({ teacherLesson: ['update'] })
   .metadata({ actionName: 'updateTeacherLesson' })
   .inputSchema(EditTeacherLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -575,7 +619,7 @@ export const updateTeacherLesson = authAction
     })
   })
 
-export const deleteTeacherLesson = authAction
+export const deleteTeacherLesson = permissionAction({ teacherLesson: ['delete'] })
   .metadata({ actionName: 'deleteTeacherLesson' })
   .inputSchema(DeleteTeacherLessonSchema)
   .action(async ({ ctx, parsedInput }) => {

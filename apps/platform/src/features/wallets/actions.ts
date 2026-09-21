@@ -94,6 +94,7 @@ export const getWalletPreview = authAction
           id: true,
           date: true,
           price: true,
+          unitPrice: true,
           lessonCount: true,
           remaining: true,
           productName: true,

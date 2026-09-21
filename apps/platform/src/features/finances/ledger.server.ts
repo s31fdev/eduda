@@ -99,6 +99,8 @@ const moneySelect = {
   amount: true,
   price: true,
   status: true,
+  isWarned: true,
+  isTrial: true,
   lessonId: true,
   makeupForAttendanceId: true,
   lesson: { select: { groupId: true, date: true } },
@@ -199,6 +201,83 @@ export async function chargeAttendanceTx(
 }
 
 /**
+ * Бесплатное пробное держит ноль по общему правилу.
+ *
+ * «Цены нет» в системе значит «занятие ждёт оплаты». Бесплатное пробное её не
+ * ждёт и не дождётся, поэтому проведённому пробному ставится ноль — «занятие
+ * было, денег за него не брали». Так оно попадает в отчёты строкой на 0 ₽, а не
+ * висит в счётчике «ждут оплаты» и не прячется из выручки вовсе.
+ *
+ * Перестало быть проведённым — сняли отметку, родитель предупредил о пропуске —
+ * ноль снимается: занятия в денежном смысле не было.
+ *
+ * Платное пробное (цена больше нуля) правило не трогает: его проводку ставил
+ * `chargeAttendanceTx`, снимать её должен он же, вместе с пакетом и журналом.
+ * Ноль движением денег не является — ни строки журнала, ни баланса за ним нет,
+ * поэтому здесь нет и записи в журнал.
+ */
+export async function syncTrialPriceTx(
+  tx: Prisma.TransactionClient,
+  args: AttendanceMoneyArgs,
+): Promise<void> {
+  const attendance = await findAttendanceTx(tx, args)
+  if (!attendance || !attendance.isTrial) return
+  // Кошелёк на строке значит «пробное платное»: за него платит пакет, а не ноль.
+  if (attendance.walletId) return
+
+  const held = isLessonCharged(attendance)
+
+  if (held && attendance.price === null) {
+    await tx.attendance.update({
+      where: { id: attendance.id },
+      data: { price: 0, amount: 1 },
+    })
+    return
+  }
+
+  if (!held && attendance.price === 0) {
+    await tx.attendance.update({ where: { id: attendance.id }, data: { price: null } })
+  }
+}
+
+/**
+ * Привести деньги строки в соответствие с её нынешним видом.
+ *
+ * Нужна там, где меняется не статус занятия, а то, **чем** оно платится: галочка
+ * «пробное» и кошелёк на строке. Одного списания для этого мало — оно не снимает
+ * уже проведённое; одного отката тоже — он не вернёт цену обратно.
+ *
+ * Списываем, когда занятие проведено и кошелёк нашёлся, иначе снимаем; в конце
+ * бесплатному пробному возвращается его ноль. Все три операции идемпотентны,
+ * поэтому лишнего движения денег здесь не будет.
+ */
+export async function syncAttendanceChargeTx(
+  tx: Prisma.TransactionClient,
+  args: AttendanceMoneyArgs,
+): Promise<void> {
+  const attendance = await findAttendanceTx(tx, args)
+  if (!attendance) return
+
+  const payable =
+    isLessonCharged(attendance) && (await walletOfAttendanceTx(tx, attendance)) !== null
+
+  if (payable) {
+    // Ноль — это «провели бесплатно», а не оплата. Снять его надо первым:
+    // списание проходит мимо строки, у которой уже стоит цена, и платное пробное
+    // навсегда осталось бы оплаченным по нулю. Пакет при нуле пуст — у настоящей
+    // проводки он есть даже при нулевой цене подарочного пакета.
+    if (attendance.price === 0 && attendance.packageId === null) {
+      await tx.attendance.update({ where: { id: attendance.id }, data: { price: null } })
+    }
+    await chargeAttendanceTx(tx, args)
+  } else {
+    await unchargeAttendanceTx(tx, args)
+  }
+
+  await syncTrialPriceTx(tx, args)
+}
+
+/**
  * Занятие больше не оплачено: возвращает урок в пакет и на баланс.
  *
  * Урок уходит в тот пакет, из которого был списан, а не в текущую голову
@@ -218,6 +297,31 @@ export async function unchargeAttendanceTx(
   const attendance = await findAttendanceTx(tx, args)
   // Цены нет — списывать было нечего.
   if (!attendance || attendance.price === null) return
+
+  // Цена есть, а списания в журнале нет — значит, с баланса за это занятие
+  // никогда ничего не снимали. Так выглядят строки, закрытые нулём при переходе:
+  // разовые визиты, которым платить было нечем, и прощённые отработки. Возврат
+  // на таких строках выдал бы урок из воздуха и оставил бы в журнале откат без
+  // своей пары, поэтому здесь снимается только цена.
+  //
+  // Правило держится на инварианте «Σ журнала = баланс»: раз движения не было,
+  // возвращать нечего. Проверка идёт по журналу, а не по `packageId`: у занятий,
+  // списанных «в долг» до перехода, пакета тоже нет, но баланс они двигали.
+  const charge = await tx.walletEntry.findFirst({
+    where: {
+      attendanceId: attendance.id,
+      kind: WalletEntryKind.CHARGE,
+      reversedBy: { is: null },
+    },
+    select: { id: true },
+  })
+  if (!charge) {
+    await tx.attendance.update({
+      where: { id: attendance.id },
+      data: { packageId: null, price: null, amount: 1 },
+    })
+    return
+  }
 
   const packet = attendance.packageId
     ? await tx.package.findUnique({
@@ -344,6 +448,12 @@ async function walletOfAttendanceTx(
   attendance: MoneyAttendance,
 ): Promise<number | null> {
   if (attendance.walletId) return attendance.walletId
+
+  // Пробное платит только кошельком, выбранным на самой строке: им менеджер и
+  // говорит «это пробное платное». Кошелёк из записи в группу пробному не
+  // подставляется — иначе бесплатное пробное ученика, который пробует второй
+  // курс, списалось бы само, а таких у школы большинство.
+  if (attendance.isTrial) return null
 
   const groupId = attendance.makeupForAttendance
     ? attendance.makeupForAttendance.lesson.groupId

@@ -40,6 +40,8 @@ export interface DashboardAttendanceItem {
   lessonId: number
   status: AttendanceStatus
   isTrial: boolean
+  /** Кошелёк со строки: у пробного он и означает «платное». */
+  walletId: number | null
   isWarned: boolean | null
   comment: string
   makeupForAttendanceId: number | null

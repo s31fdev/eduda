@@ -1,3 +1,4 @@
+import type { OrganizationPermissionCheck } from '@/src/lib/permissions/organization'
 import { DateOnlySchema } from '@/src/lib/timezone'
 import * as z from 'zod'
 
@@ -38,9 +39,43 @@ export const UpdateAttendanceStatusSchema = z.object({
   isWarned: z.boolean().nullable(),
 })
 
+/**
+ * Кто что делает с посещаемостью урока. Преподаватель только отмечает учеников:
+ * статус и комментарий к отметке — это `update`, он у него есть. Всё остальное —
+ * кто сидит на уроке и на каких условиях — у менеджера и выше: добавить ученика,
+ * сменить тип посещения, записать на отработку (`create`) и удалить строку
+ * (`delete`). Константы общие для экшенов и интерфейса, чтобы проверки не
+ * разошлись: экшены отказывают сами, окна лишь прячут кнопки.
+ */
+export const MARK_ATTENDANCE_PERMISSION = {
+  studentLesson: ['update'],
+} as const satisfies OrganizationPermissionCheck
+export const MANAGE_ATTENDANCE_PERMISSION = {
+  studentLesson: ['create'],
+} as const satisfies OrganizationPermissionCheck
+export const DELETE_ATTENDANCE_PERMISSION = {
+  studentLesson: ['delete'],
+} as const satisfies OrganizationPermissionCheck
+
+/**
+ * Кто решает, платное ли пробное. Это операция с деньгами — занятие начинает или
+ * перестаёт списываться из пакета, — поэтому право то же, что на заведение
+ * оплат: у менеджера и владельца оно есть, у преподавателя нет. Отдельного
+ * действия под это не заводим: владелец, давший кому-то оплаты, и так доверил
+ * ему деньги. Константа одна на экшены и на окна, чтобы проверки не разошлись.
+ */
+export const PAID_TRIAL_PERMISSION = {
+  payment: ['create'],
+} as const satisfies OrganizationPermissionCheck
+
 export const UpdateAttendanceTrialStatusSchema = z.object({
   id: z.number().int().positive(),
   isTrial: z.boolean(),
+  /**
+   * Чем платят за это занятие. `null` — ничем, пробное бесплатное; число —
+   * кошелёк ученика; `undefined` — оставить то, что уже стоит на строке.
+   */
+  walletId: z.number().int().positive().nullable().optional(),
 })
 
 export const UpdateAttendanceCommentSchema = z.object({

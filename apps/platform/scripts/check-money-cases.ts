@@ -20,6 +20,8 @@ import {
   cancelPackageTx,
   chargeAttendanceTx,
   isLessonCharged,
+  syncAttendanceChargeTx,
+  syncTrialPriceTx,
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
@@ -158,30 +160,35 @@ async function main() {
           })
           await tx.attendance.update({ where: { id: attendanceId }, data: { status, isWarned } })
 
-          // Пробное вне денег — экшен выходит здесь же.
-          if (before.isTrial) return
-
           const was = isLessonCharged(before)
           const now = isLessonCharged({ ...before, status, isWarned })
-          if (was === now) return
           const money = { attendanceId, organizationId, actorUserId: null }
-          if (now) await chargeAttendanceTx(tx, money)
-          else await unchargeAttendanceTx(tx, money)
+          if (was !== now) {
+            if (now) await chargeAttendanceTx(tx, money)
+            else await unchargeAttendanceTx(tx, money)
+          }
+          // Ноль бесплатного пробного — последним, как в экшене.
+          await syncTrialPriceTx(tx, money)
         }
 
         /** То же, что делает `updateAttendanceTrialStatus`: сначала флаг, потом деньги. */
-        const setTrial = async (attendanceId: number, isTrial: boolean) => {
+        const setTrial = async (
+          attendanceId: number,
+          isTrial: boolean,
+          walletId?: number | null,
+        ) => {
           const before = await tx.attendance.findUniqueOrThrow({
             where: { id: attendanceId },
-            select: { status: true, isWarned: true, isTrial: true, makeupForAttendanceId: true },
+            select: { isTrial: true, walletId: true },
           })
-          if (before.isTrial === isTrial) return
-          await tx.attendance.update({ where: { id: attendanceId }, data: { isTrial } })
+          const nextWallet = walletId === undefined ? before.walletId : walletId
+          if (before.isTrial === isTrial && before.walletId === nextWallet) return
 
-          if (!isLessonCharged(before)) return
-          const money = { attendanceId, organizationId, actorUserId: null }
-          if (isTrial) await unchargeAttendanceTx(tx, money)
-          else await chargeAttendanceTx(tx, money)
+          await tx.attendance.update({
+            where: { id: attendanceId },
+            data: { isTrial, walletId: nextWallet },
+          })
+          await syncAttendanceChargeTx(tx, { attendanceId, organizationId, actorUserId: null })
         }
 
         /** Продали и оплатили пакет — то же, что делает `createPaymentWithBalance`. */
@@ -405,29 +412,116 @@ async function main() {
         }
 
         {
+          // Ноль у бесплатного пробного: «занятие было, денег не брали».
+          const s = await scene('Пробное и ноль')
+          const trial = await visit({ studentId: s.studentId })
+          await setTrial(trial, true)
+
+          await mark(trial, AttendanceStatus.PRESENT)
+          assert.equal((await entryOf(trial)).price, 0)
+          assert.equal(await balanceOf(s.walletId), 0)
+          assert.equal(await ledgerSumOf(s.walletId), 0)
+          ok('проведённое пробное держит ноль, не трогая баланс и журнал')
+
+          await mark(trial, AttendanceStatus.ABSENT, true)
+          assert.equal((await entryOf(trial)).price, null)
+          ok('предупреждённый пропуск снимает ноль: занятия не было')
+
+          await mark(trial, AttendanceStatus.UNSPECIFIED)
+          assert.equal((await entryOf(trial)).price, null)
+          ok('снятая отметка тоже снимает ноль')
+        }
+
+        {
           const s = await scene('Пробное')
           const p = await pay(s.walletId, s.studentId, '2026-09-01', 10_000, 10)
           const trial = await visit({ studentId: s.studentId })
           await setTrial(trial, true)
           await mark(trial, AttendanceStatus.PRESENT)
-          // Экшен для пробных денежные функции не вызывает вовсе.
-          assert.equal(await charged(trial), false)
+          // Пробное не списывается: у него ноль, пакет и баланс не тронуты.
+          assert.equal((await entryOf(trial)).price, 0)
+          assert.equal(await remainingOf(p.id), 10)
           assert.equal(await balanceOf(s.walletId), 10)
-          ok('пробное занятие не списывается')
+          ok('пробное занятие не списывается даже при полном кошельке')
 
           // Ровно этим 04.09.2026 повисло «ждёт оплаты» при полном кошельке:
           // отметку пробного деньги не видели, а снятая позже галочка их не звала.
           await setTrial(trial, false)
-          assert.equal(await charged(trial), true)
+          assert.equal((await entryOf(trial)).price, 1_000)
           assert.equal(await remainingOf(p.id), 9)
           assert.equal(await balanceOf(s.walletId), 9)
-          ok('снятая галочка «пробное» списывает проведённое занятие')
+          ok('снятая галочка «пробное» списывает занятие по цене пакета, а не по нулю')
 
           await setTrial(trial, true)
-          assert.equal(await charged(trial), false)
+          assert.equal((await entryOf(trial)).price, 0)
           assert.equal(await remainingOf(p.id), 10)
           assert.equal(await balanceOf(s.walletId), 10)
-          ok('обратная галочка снимает списание: за пробное школа денег не берёт')
+          ok('обратная галочка возвращает урок в пакет и снова держит ноль')
+        }
+
+        {
+          // Платное пробное: кошелёк на строке делает его обычной оплаченной
+          // строкой, а галочка остаётся — это тип визита, а не признак оплаты.
+          const s = await scene('Платное пробное')
+          const p = await pay(s.walletId, s.studentId, '2026-09-01', 300, 1)
+          const trial = await visit({ studentId: s.studentId })
+          await setTrial(trial, true)
+          await mark(trial, AttendanceStatus.PRESENT)
+
+          assert.equal((await entryOf(trial)).price, 0)
+          assert.equal(await remainingOf(p.id), 1)
+          ok('пробное без кошелька пакета не трогает, даже когда ученик в группе')
+
+          await setTrial(trial, true, s.walletId)
+          assert.equal((await entryOf(trial)).price, 300)
+          assert.equal((await entryOf(trial)).packageId, p.id)
+          assert.equal(await remainingOf(p.id), 0)
+          assert.equal(await balanceOf(s.walletId), 0)
+          ok('выбранный кошелёк делает пробное платным по цене пакета')
+
+          const flag = await tx.attendance.findUniqueOrThrow({
+            where: { id: trial },
+            select: { isTrial: true },
+          })
+          assert.equal(flag.isTrial, true)
+          ok('галочка «пробное» остаётся на оплаченной строке')
+
+          await mark(trial, AttendanceStatus.ABSENT, true)
+          assert.equal(await charged(trial), false)
+          assert.equal(await remainingOf(p.id), 1)
+          assert.equal(await balanceOf(s.walletId), 1)
+          ok('предупреждённый пропуск возвращает урок и платному пробному')
+
+          await mark(trial, AttendanceStatus.PRESENT)
+          assert.equal((await entryOf(trial)).price, 300)
+
+          await setTrial(trial, true, null)
+          assert.equal((await entryOf(trial)).price, 0)
+          assert.equal(await remainingOf(p.id), 1)
+          assert.equal(await balanceOf(s.walletId), 1)
+          ok('снятый кошелёк возвращает урок в пакет и ставит ноль')
+        }
+
+        {
+          // Пробное отметили до оплаты: платное её ждёт, бесплатное — нет.
+          const s = await scene('Пробное до оплаты')
+
+          const paid = await visit({ studentId: s.studentId, walletId: s.walletId })
+          await setTrial(paid, true)
+          await mark(paid, AttendanceStatus.PRESENT)
+          assert.equal(await charged(paid), false)
+
+          const free = await visit({ studentId: s.studentId })
+          await setTrial(free, true)
+          await mark(free, AttendanceStatus.PRESENT)
+          assert.equal((await entryOf(free)).price, 0)
+
+          const p = await pay(s.walletId, s.studentId, '2026-09-01', 300, 1)
+          assert.equal(p.settled, 1)
+          assert.equal((await entryOf(paid)).price, 300)
+          assert.equal((await entryOf(free)).price, 0)
+          assert.equal(await remainingOf(p.id), 0)
+          ok('оплата закрывает платное пробное и не трогает бесплатное')
         }
 
         console.log('\nУдаление строк')
@@ -452,6 +546,35 @@ async function main() {
           assert.equal(await balanceOf(s.walletId), balanceBefore)
           assert.equal(await tx.walletEntry.count({ where: { walletId: s.walletId } }), 0)
           ok('удаление ждущего оплаты посещения ничего не двигает')
+        }
+
+        {
+          // Занятие, закрытое нулём при переходе: цена стоит, а с баланса за него
+          // ничего не снимали. Откат обязан снять только цену.
+          const s = await scene('Нулевая цена')
+          const v = await visit({ studentId: s.studentId })
+          await mark(v, AttendanceStatus.PRESENT)
+          assert.equal(await charged(v), false)
+
+          // Ровно это делали `close-unbillable-attendances` и `forgive-missed-makeups`:
+          // цена появляется мимо журнала, движения денег за ней нет.
+          await tx.attendance.update({ where: { id: v }, data: { price: 0 } })
+
+          // Оплата приходит позже и такую строку не подбирает: она уже с ценой.
+          const p = await pay(s.walletId, s.studentId, '2026-09-01', 10_000, 10)
+          assert.equal(await balanceOf(s.walletId), 10)
+
+          await unchargeAttendanceTx(tx, { attendanceId: v, organizationId, actorUserId: null })
+
+          assert.equal(await charged(v), false)
+          assert.equal(await balanceOf(s.walletId), 10)
+          assert.equal(await remainingOf(p.id), 10)
+          assert.equal(
+            await tx.walletEntry.count({ where: { attendanceId: v } }),
+            0,
+            'откат нулевой строки не имеет права писать в журнал',
+          )
+          ok('занятие, закрытое нулём, при откате не возвращает урок')
         }
 
         console.log('\nОтработки')

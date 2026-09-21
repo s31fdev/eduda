@@ -237,7 +237,8 @@ function buildColumns(
         const { price } = row.original
         if (price !== null) return formatCurrency(price)
         // Цены нет — списания не было: занятие провели, а оплаты под него ещё нет.
-        // Пробных здесь не бывает, их отбор выручки не пускает.
+        // Пробное сюда попадает только с ценой (0 ₽ у бесплатного), поэтому «не
+        // оплачено» на нём не покажется.
         return <span className="text-muted-foreground text-xs">не оплачено</span>
       },
       meta: { title: 'Сумма', className: NUMERIC },
@@ -256,6 +257,10 @@ function buildColumns(
           // таблица прыгала по высоте на каждом листании.
           <span className="flex items-center gap-1 overflow-hidden whitespace-nowrap">
             <Badge variant={KIND_VARIANT[kind]}>{REVENUE_KIND_LABELS[kind]}</Badge>
+            {/* Отдельным бейджем, а не пятым классом выручки: пробное бывает и
+                посещением, и пропуском без предупреждения, и класс у него тот же.
+                Без него строка на 0 ₽ читается как занятие, отданное бесплатно. */}
+            {row.original.isTrial && <Badge variant="info">Пробный</Badge>}
             {/* Дата пропуска — у обеих отработок: пропущенная объясняется тем же
                 занятием, что и посещённая. */}
             {missedDate && (

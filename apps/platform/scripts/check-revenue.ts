@@ -104,7 +104,9 @@ async function main() {
     const missedMakeupInDb = await prisma.attendance.count({
       where: {
         organizationId: org.id,
-        isTrial: false,
+        // То же сужение, что и в правиле: не считается только бесплатное пробное,
+        // которому ноль ещё не проставлен.
+        NOT: { isTrial: true, walletId: null, price: null },
         status: 'ABSENT',
         makeupForAttendanceId: { not: null },
         lesson: { status: 'ACTIVE', date: { gte: START, lte: END } },
