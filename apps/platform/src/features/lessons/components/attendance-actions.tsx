@@ -48,7 +48,7 @@ import { Switch } from '@repo/ui/components/switch'
 import { CalendarCog, CalendarPlus, Loader, MoreVertical, Trash, UserPen } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useStudentWalletsQuery, useWalletPreviewQuery } from '@/src/features/wallets/queries'
-import { getWalletLabel, nextChargeText } from '@/src/features/wallets/utils'
+import { chargePreview, getWalletLabel } from '@/src/features/wallets/utils'
 import { useDeleteAttendanceMutation, useUpdateAttendanceTrialStatusMutation } from '../queries'
 import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import {
@@ -97,6 +97,12 @@ const AttendanceActions = ({ attendance }: { attendance: AttendanceForActions })
     () => (wallets ?? []).map((w) => ({ value: String(w.id), label: getWalletLabel(w) })),
     [wallets],
   )
+
+  // Чем занятие уже оплачено или чем спишется, и не курс ли это вместо пробника.
+  const preview = chargePreview(walletPreview?.packages, {
+    packageId: attendance.packageId,
+    price: attendance.price,
+  })
 
   /** Переключение платности: у одного кошелька выбирать не из чего — берём его. */
   const handlePaidChange = (paid: boolean) => {
@@ -339,8 +345,11 @@ const AttendanceActions = ({ attendance }: { attendance: AttendanceForActions })
                     ? 'У ученика нет кошельков, сначала заведите оплату.'
                     : walletId === null
                       ? 'Выберите кошелёк, с которого списать занятие.'
-                      : nextChargeText(walletPreview?.packages)}
+                      : preview?.text}
                 </FieldDescription>
+                {walletId !== null && preview?.warning && (
+                  <FieldDescription className="text-warning">{preview.warning}</FieldDescription>
+                )}
               </Field>
             )}
           </FieldGroup>

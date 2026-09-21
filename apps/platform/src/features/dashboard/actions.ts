@@ -74,6 +74,8 @@ function mapAttendanceItem(
     status: attendance.status,
     isTrial: attendance.isTrial,
     walletId: attendance.walletId,
+    price: attendance.price,
+    packageId: attendance.packageId,
     isWarned: attendance.isWarned,
     comment: attendance.comment,
     makeupForAttendanceId: attendance.makeupForAttendanceId,

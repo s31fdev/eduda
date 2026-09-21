@@ -33,7 +33,7 @@ import { Skeleton } from '@repo/ui/components/skeleton'
 import { Switch } from '@repo/ui/components/switch'
 import { useAllStudentsQuery } from '@/src/features/students/queries'
 import { useStudentWalletsQuery, useWalletPreviewQuery } from '@/src/features/wallets/queries'
-import { getWalletLabel, nextChargeText } from '@/src/features/wallets/utils'
+import { chargePreview, getWalletLabel } from '@/src/features/wallets/utils'
 import { getFullName } from '@/src/lib/utils'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader, Plus } from 'lucide-react'
@@ -170,6 +170,8 @@ function AddAttendanceForm({ form, onSubmit }: AddAttendanceFormProps) {
     isTrial && isPaid ? (walletId ?? null) : null,
   )
 
+  const preview = chargePreview(walletPreview?.packages)
+
   if (isStudentsLoading) {
     return <Skeleton className="h-full w-full" />
   }
@@ -304,7 +306,14 @@ function AddAttendanceForm({ form, onSubmit }: AddAttendanceFormProps) {
                 ) : (
                   isTrial &&
                   field.value !== undefined && (
-                    <FieldDescription>{nextChargeText(walletPreview?.packages)}</FieldDescription>
+                    <>
+                      <FieldDescription>{preview?.text}</FieldDescription>
+                      {preview?.warning && (
+                        <FieldDescription className="text-warning">
+                          {preview.warning}
+                        </FieldDescription>
+                      )}
+                    </>
                   )
                 )}
               </Field>

@@ -42,6 +42,8 @@ export interface DashboardAttendanceItem {
   isTrial: boolean
   /** Кошелёк со строки: у пробного он и означает «платное». */
   walletId: number | null
+  price: number | null
+  packageId: number | null
   isWarned: boolean | null
   comment: string
   makeupForAttendanceId: number | null

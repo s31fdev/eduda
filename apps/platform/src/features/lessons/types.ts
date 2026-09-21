@@ -45,6 +45,9 @@ export type AttendanceForActions = {
   isTrial: boolean
   /** Кошелёк, выбранный на самой строке: у пробного он и значит «платное». */
   walletId: number | null
+  /** Проводка строки: окно показывает, чем занятие уже оплачено. */
+  price: number | null
+  packageId: number | null
   makeupForAttendanceId: number | null
   student: {
     firstName: string
