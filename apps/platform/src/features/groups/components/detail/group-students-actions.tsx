@@ -310,9 +310,7 @@ export default function GroupStudentActions({ sg }: UsersActionsProps) {
                       onValueChange={(g) => g && field.onChange(g.id)}
                       placeholder="Выберите группу для перевода"
                       emptyText="Не найдены группы"
-                      itemDisabled={(g) =>
-                        g.students.filter((sg) => sg.status === 'ACTIVE').length >= g.maxStudents
-                      }
+                      itemDisabled={(g) => g.students.length >= g.maxStudents}
                       renderItem={(g) => (
                         <Item size="xs" className="p-0">
                           <ItemContent>
@@ -323,12 +321,10 @@ export default function GroupStudentActions({ sg }: UsersActionsProps) {
                               <span
                                 className={cn(
                                   'tabular-nums',
-                                  g.students.filter((sg) => sg.status === 'ACTIVE').length >=
-                                    g.maxStudents && 'text-destructive',
+                                  g.students.length >= g.maxStudents && 'text-destructive',
                                 )}
                               >
-                                {g.students.filter((sg) => sg.status === 'ACTIVE').length}/
-                                {g.maxStudents}
+                                {g.students.length}/{g.maxStudents}
                               </span>
                             </ItemDescription>
                           </ItemContent>

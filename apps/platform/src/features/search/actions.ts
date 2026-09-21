@@ -49,7 +49,7 @@ export const globalSearch = authAction
           location: { select: { name: true } },
           schedules: { select: { dayOfWeek: true, time: true } },
           maxStudents: true,
-          _count: { select: { students: true } },
+          _count: { select: { students: { where: { status: 'ACTIVE' } } } },
           teachers: { select: { teacher: { select: { name: true } } } },
         },
         take: LIMIT,

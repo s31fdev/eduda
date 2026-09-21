@@ -57,7 +57,9 @@ export const getAllGroups = authAction
         course: true,
         schedules: true,
         teachers: { include: { teacher: true } },
-        students: { include: { student: true } },
+        // Только нынешний состав: по нему считается заполненность группы в выборе
+        // группы. Отчисленные и переведённые занимали бы места, которых нет.
+        students: { where: { status: 'ACTIVE' }, include: { student: true } },
       },
       orderBy: { id: 'asc' },
     })
