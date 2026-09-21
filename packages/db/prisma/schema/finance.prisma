@@ -179,8 +179,7 @@ model Package {
 model WalletEntry {
     id       Int             @id @default(autoincrement())
     kind     WalletEntryKind
-    /// Уроки: + пришли, − ушли. Ноль — движения не было, но событие записать надо
-    /// (откат списания с отменённой оплаты).
+    /// Уроки: + пришли, − ушли. Ноль — движения не было, но событие записать надо.
     quantity Int
     /// Цена урока в этой строке; `quantity × unitPrice` — деньги строки.
     unitPrice Int @default(0)
@@ -201,7 +200,8 @@ model WalletEntry {
     packageId      Int?
     actorUserId    Int?
     /// Какую строку отменяет. У списания отмена может быть только одна: повторное
-    /// списание того же занятия — это новая пара строк.
+    /// списание того же занятия — это новая пара строк. Корректировка ссылается на
+    /// откат, урок которого вернуть было некуда (пакета нет или он отменён).
     reversalOfId Int? @unique
 
     organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)

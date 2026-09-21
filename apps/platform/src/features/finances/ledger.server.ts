@@ -66,6 +66,9 @@ import { ConflictError } from '../../lib/error'
  */
 export const LEDGER_SWITCH_COMMENT = 'Переход на учёт неоплаченных занятий: закрыт долг в уроках'
 
+/** Подпись корректировки, которой откат снимает урок списания без пакета. */
+const NO_PACKAGE_RETURN_COMMENT = 'Списание без пакета — урок вернуть некуда'
+
 /**
  * Списывается ли урок при таком статусе.
  * - PRESENT — всегда списывается
@@ -284,8 +287,10 @@ export async function syncAttendanceChargeTx(
  * очереди: при пакетах разной цены иначе поедут и остатки, и признанная
  * выручка. Строку можно потом удалять — деньги уже сняты со строки.
  *
- * Исключение одно: пакет отменён. Деньги за него школа вернула, класть урок
- * обратно некуда и не за что — проводка снимается, баланс остаётся на месте.
+ * Вернуть урок бывает некуда: пакет отменён — деньги за него школа вернула, — или
+ * пакета не было вовсе: занятие списали «в долг» до перехода, и долг закрыт тогда
+ * же корректировкой. Проводка снимается и тут, а баланс остаётся на месте: он
+ * обязан равняться остаткам пакетов.
  *
  * Повторный вызов на несписанной строке ничего не делает.
  */
@@ -352,23 +357,9 @@ export async function unchargeAttendanceTx(
   // разойдётся с остатками, если ученика с тех пор перевели на другой кошелёк.
   const walletId = packet?.walletId ?? (await walletOfAttendanceTx(tx, attendance))
 
-  // Пакет отменили: урок не вернулся ни в него, ни на баланс. Событие всё равно
-  // записываем — иначе в журнале останется списание без своей пары.
-  if (attendance.packageId && !returned) {
-    await recordEntryTx(tx, {
-      attendance,
-      walletId,
-      kind: WalletEntryKind.REVERSAL,
-      quantity: 0,
-      unitPrice: attendance.price ?? 0,
-      packageId: attendance.packageId,
-      actorUserId: args.actorUserId,
-      comment: 'Пакет отменён — урок не возвращается',
-    })
-    return
-  }
-
-  await recordEntryTx(tx, {
+  // Откат зеркалит списание: из журнала уходят и урок, и выручка за него — так же,
+  // как проводка со строки.
+  const reversalId = await recordEntryTx(tx, {
     attendance,
     walletId,
     kind: WalletEntryKind.REVERSAL,
@@ -377,6 +368,28 @@ export async function unchargeAttendanceTx(
     packageId: attendance.packageId,
     actorUserId: args.actorUserId,
   })
+
+  // Урок вернуть некуда — корректировка без цены снимает его обратно: выручка ушла,
+  // баланс и остатки на месте. Одна нулевая строка вместо пары не годится: выручка
+  // списания осталась бы в журнале, хотя со строки ушла, и `check-ledger.ts`
+  // разошёлся бы на цену урока. До 15.09.2026 урок списания без пакета здесь
+  // возвращался на баланс — см. `takeBackLessonReturnedWithoutPackageTx`.
+  if (!returned) {
+    await recordEntryTx(tx, {
+      attendance,
+      walletId,
+      kind: WalletEntryKind.ADJUSTMENT,
+      quantity: -attendance.amount,
+      unitPrice: 0,
+      packageId: attendance.packageId,
+      reversalOfId: reversalId,
+      actorUserId: args.actorUserId,
+      comment: attendance.packageId
+        ? 'Пакет отменён — урок не возвращается'
+        : NO_PACKAGE_RETURN_COMMENT,
+    })
+    return
+  }
 
   await moveBalanceTx(tx, {
     attendance,
@@ -439,6 +452,64 @@ export async function unchargeAttendancesTx(
 }
 
 /**
+ * Починка отката, записанного до 15.09.2026: тогда `unchargeAttendanceTx` возвращал
+ * урок списания без пакета на баланс, и баланс кошелька расходился с остатками
+ * пакетов (`check-wallet-balance.ts`). Дописывает к откату ту корректировку, которую
+ * теперь пишет сам откат, и снимает урок с баланса.
+ *
+ * Берёт только такой откат и только один раз: корректировка ссылается на него, и
+ * второй раз он уже не находится.
+ */
+export async function takeBackLessonReturnedWithoutPackageTx(
+  tx: Prisma.TransactionClient,
+  args: { reversalId: number; organizationId: number; actorUserId: number | null },
+): Promise<void> {
+  const reversal = await tx.walletEntry.findFirst({
+    where: {
+      id: args.reversalId,
+      organizationId: args.organizationId,
+      kind: WalletEntryKind.REVERSAL,
+      packageId: null,
+      quantity: { gt: 0 },
+      reversedBy: { is: null },
+    },
+    select: { id: true, walletId: true, quantity: true, attendanceId: true },
+  })
+  const attendance = reversal?.attendanceId
+    ? await findAttendanceTx(tx, {
+        attendanceId: reversal.attendanceId,
+        organizationId: args.organizationId,
+        actorUserId: args.actorUserId,
+      })
+    : null
+  if (!reversal || !attendance) {
+    throw new ConflictError(`Откат ${args.reversalId} не возвращал урок мимо пакета`)
+  }
+
+  await recordEntryTx(tx, {
+    attendance,
+    walletId: reversal.walletId,
+    kind: WalletEntryKind.ADJUSTMENT,
+    quantity: -reversal.quantity,
+    unitPrice: 0,
+    packageId: null,
+    reversalOfId: reversal.id,
+    actorUserId: args.actorUserId,
+    comment: NO_PACKAGE_RETURN_COMMENT,
+  })
+
+  await moveBalanceTx(tx, {
+    attendance,
+    walletId: reversal.walletId,
+    delta: -reversal.quantity,
+    reason: StudentLessonsBalanceChangeReason.MANUAL_SET,
+    actorUserId: args.actorUserId,
+    comment: NO_PACKAGE_RETURN_COMMENT,
+    meta: { reversalId: reversal.id },
+  })
+}
+
+/**
  * Кошелёк списания: у разового посещения он выбран на самой строке, у обычного
  * берётся из группы. Отработка платит кошельком той группы, где случился
  * пропуск, а не той, куда ученик пришёл отрабатывать.
@@ -490,8 +561,9 @@ export async function recordWalletEntryTx(
     actorUserId: number | null
     comment?: string | null
   },
-): Promise<void> {
-  await tx.walletEntry.create({
+): Promise<number> {
+  const entry = await tx.walletEntry.create({
+    select: { id: true },
     data: {
       organizationId: args.organizationId,
       walletId: args.walletId,
@@ -507,6 +579,7 @@ export async function recordWalletEntryTx(
       comment: args.comment ?? null,
     },
   })
+  return entry.id
 }
 
 /**
@@ -699,12 +772,14 @@ async function recordEntryTx(
     quantity: number
     unitPrice: number
     packageId: number | null
+    /** Откат находит своё списание сам; корректировка ссылается на откат, который исправляет. */
+    reversalOfId?: number | null
     actorUserId: number | null
     comment?: string | null
   },
-): Promise<void> {
+): Promise<number | null> {
   const { attendance, walletId } = args
-  if (!walletId) return
+  if (!walletId) return null
 
   // Откат ссылается на списание, которое отменяет: по этой ссылке журнал
   // читается парами, а `@unique` не даёт отменить одно списание дважды.
@@ -721,7 +796,7 @@ async function recordEntryTx(
         })
       : null
 
-  await recordWalletEntryTx(tx, {
+  return await recordWalletEntryTx(tx, {
     organizationId: attendance.organizationId,
     walletId,
     studentId: attendance.studentId,
@@ -733,7 +808,7 @@ async function recordEntryTx(
     effectiveAt: attendance.lesson.date,
     packageId: args.packageId,
     attendanceId: attendance.id,
-    reversalOfId: reversed?.id ?? null,
+    reversalOfId: args.reversalOfId ?? reversed?.id ?? null,
     actorUserId: args.actorUserId,
     comment: args.comment,
   })
@@ -748,6 +823,7 @@ async function moveBalanceTx(
     delta: number
     reason: StudentLessonsBalanceChangeReason
     actorUserId: number | null
+    comment?: string
     meta?: Record<string, unknown>
   },
 ): Promise<void> {
@@ -779,6 +855,7 @@ async function moveBalanceTx(
     delta: updated.lessonsBalance - wallet.lessonsBalance,
     balanceBefore: wallet.lessonsBalance,
     balanceAfter: updated.lessonsBalance,
+    comment: args.comment,
     meta: {
       attendanceId: attendance.id,
       lessonId: attendance.lessonId,
