@@ -177,6 +177,7 @@ src/features/<feature>/
 
 - `src/lib/auth/server.ts` configures better-auth with the `organization` + `admin` plugins. Email/password only, **sign-up disabled**. `customSession` augments the session with the user's member org, role, and disabled features.
 - RBAC roles `owner` / `manager` / `teacher` with granular statements are defined in `src/lib/permissions/organization.ts` (global/admin perms in `permissions/global.ts`). Note: per the audit in `docs/CODE_REVIEW.md`, RBAC enforcement inside actions has historically been incomplete — scope-check roles where it matters.
+- **Право в интерфейсе: `useHasPermission` возвращает `boolean`, а `useOrganizationPermissionQuery` — объект better-auth со свойством `success`.** Второй в условии всегда истинен, и гейт молча пропускает всех: так у преподавателя чуть не остался переключатель платного пробного. Новый гейт — `useHasPermission` (снимок сессии, синхронно, без запроса); карту прав целиком даёт `usePermissions`.
 - `docs/CODE_REVIEW.md` is a Feb 2026 security audit referencing an **older** `src/actions/` + `src/shared/` layout (since refactored into `src/features/*`). Treat it as historical context, not current structure.
 
 ## Dates & timezone (important convention)
