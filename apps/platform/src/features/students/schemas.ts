@@ -48,6 +48,12 @@ export const UpdateStudentSchema = EditStudentSchema.extend({
   studentId: z.number().int().positive(),
 })
 
+// Правится только комментарий: остальные колонки строки — след движения денег.
+export const UpdateStudentBalanceHistorySchema = z.object({
+  id: z.number().int().positive(),
+  data: z.object({ comment: z.string().trim().min(1, 'Укажите комментарий') }),
+})
+
 export const UpdateStudentCoinsSchema = z.object({
   studentId: z.number().int().positive(),
   coins: z
@@ -67,6 +73,9 @@ export const RevealStudentPasswordSchema = z.object({
 export type CreateStudentSchemaType = z.infer<typeof CreateStudentSchema>
 export type EditStudentSchemaType = z.infer<typeof EditStudentSchema>
 export type UpdateStudentSchemaType = z.infer<typeof UpdateStudentSchema>
+export type UpdateStudentBalanceHistorySchemaType = z.infer<
+  typeof UpdateStudentBalanceHistorySchema
+>
 export type UpdateStudentCoinsSchemaType = z.infer<typeof UpdateStudentCoinsSchema>
 export type DeleteStudentSchemaType = z.infer<typeof DeleteStudentSchema>
 export type RevealStudentPasswordSchemaType = z.infer<typeof RevealStudentPasswordSchema>

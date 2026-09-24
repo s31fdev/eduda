@@ -20,6 +20,7 @@ import type {
   DeleteStudentSchemaType,
   RevealStudentPasswordSchemaType,
   StudentListSchemaType,
+  UpdateStudentBalanceHistorySchemaType,
   UpdateStudentCoinsSchemaType,
   UpdateStudentSchemaType,
 } from './schemas'
@@ -236,7 +237,7 @@ export const useStudentBalanceHistoryUpdateMutation = (studentId: number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: { id: number; data: Record<string, unknown> }) => {
+    mutationFn: async (input: UpdateStudentBalanceHistorySchemaType) => {
       const { data, serverError } = await updateStudentBalanceHistory(input)
       if (serverError) throw serverError
       return data

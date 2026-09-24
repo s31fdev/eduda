@@ -20,6 +20,7 @@ import {
   DeleteStudentSchema,
   RevealStudentPasswordSchema,
   StudentListSchema,
+  UpdateStudentBalanceHistorySchema,
   UpdateStudentCoinsSchema,
   UpdateStudentSchema,
 } from './schemas'
@@ -568,18 +569,18 @@ export const getStudentLessonsBalanceHistory = authAction
     })
   })
 
-export const updateStudentBalanceHistory = authAction
+/**
+ * Комментарий к строке истории баланса. Раньше `data` приходил из браузера как
+ * есть: любой член любой школы переписывал по id чужую историю, включая дельту и
+ * остатки до/после. Теперь поле одно, а строка ищется в своей школе.
+ */
+export const updateStudentBalanceHistory = permissionAction({ lessonStudentHistory: ['update'] })
   .metadata({ actionName: 'updateStudentBalanceHistory' })
-  .inputSchema(
-    z.object({
-      id: z.number().int().positive(),
-      data: z.any(),
-    }),
-  )
-  .action(async ({ parsedInput }) => {
+  .inputSchema(UpdateStudentBalanceHistorySchema)
+  .action(async ({ ctx, parsedInput }) => {
     return await prisma.studentLessonsBalanceHistory.update({
-      where: { id: parsedInput.id },
-      data: parsedInput.data as Prisma.StudentLessonsBalanceHistoryUpdateInput,
+      where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
+      data: { comment: parsedInput.data.comment },
     })
   })
 
