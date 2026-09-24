@@ -102,14 +102,24 @@ export function CorrectPackageDrawer({
     <>
       <DrawerHeader className="pb-4">
         <DrawerTitle>Исправить пакет</DrawerTitle>
-        <DrawerDescription>
-          В «{wallet ? getWalletLabel(wallet) : 'Кошелёк'}». Для пакетов, заведённых с ошибкой в
-          числе занятий или в сумме.
-        </DrawerDescription>
+        <DrawerDescription>{wallet ? getWalletLabel(wallet) : 'Кошелёк'}</DrawerDescription>
       </DrawerHeader>
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 px-4">
+          {/* Первым, до выбора пакета: правка переписывает отчёты задним числом, и
+              это надо прочитать до того, как начнёшь вводить цифры. Янтарные только
+              рамка, подложка и иконка — янтарный текст на бледной подложке в светлой
+              теме читается плохо. Цвет иконки задаётся через `*:[svg]:`, а не на ней
+              самой: база `Alert` красит иконки в цвет текста правилом сильнее класса. */}
+          <Alert className="border-warning/30 bg-warning/10 *:[svg]:text-warning">
+            <TriangleAlert />
+            <AlertTitle>Правка меняет финансовые отчёты</AlertTitle>
+            <AlertDescription>
+              В том числе за прошлые месяцы: выручку, прибыль и авансы. Исправляйте с осторожностью.
+            </AlertDescription>
+          </Alert>
+
           <Field>
             <FieldLabel>Пакет</FieldLabel>
             {packages.length === 0 ? (
