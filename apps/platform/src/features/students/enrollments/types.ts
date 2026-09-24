@@ -150,3 +150,12 @@ export type EnrollmentChartData = {
   enrolled: EnrollmentChartPoint[]
   studied: StudiedChartBucket[]
 }
+
+/**
+ * Сводка над таблицей: сколько записей в отборе и сколько за ними людей. Второе
+ * не выводится из первого и наоборот — ученик на двух курсах даёт две записи.
+ */
+export type EnrollmentSummary = {
+  total: number
+  students: number
+}

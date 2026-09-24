@@ -4,6 +4,7 @@ import {
   getEnrollmentChartData,
   getEnrollmentGroups,
   getEnrollmentStatusPoints,
+  getEnrollmentSummary,
   getEnrollments,
   returnToGroup,
 } from './actions'
@@ -23,9 +24,12 @@ export const enrollmentKeys = {
   chart: (params: EnrollmentChartSchemaType) => [...enrollmentKeys.all, 'chart', params] as const,
   statusChart: (params: EnrollmentStatusChartSchemaType) =>
     [...enrollmentKeys.all, 'status-chart', params] as const,
+  summary: (params: EnrollmentStatusChartSchemaType) =>
+    [...enrollmentKeys.all, 'summary', params] as const,
 }
 
 const EMPTY_PAGE = { rows: [], total: 0 }
+const EMPTY_SUMMARY = { total: 0, students: 0 }
 
 export const useEnrollmentListQuery = (params: EnrollmentListSchemaType, enabled = true) => {
   return useQuery({
@@ -57,6 +61,21 @@ export const useEnrollmentGroupsQuery = (params: EnrollmentGroupsSchemaType, ena
       return data ?? EMPTY_PAGE
     },
     enabled,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** Сводка над таблицей: тот же отбор и статусы, но без страницы и режима свёртки. */
+export const useEnrollmentSummaryQuery = (params: EnrollmentStatusChartSchemaType) => {
+  return useQuery({
+    queryKey: enrollmentKeys.summary(params),
+    queryFn: async () => {
+      const { data, serverError } = await getEnrollmentSummary(params)
+      if (serverError) throw serverError
+      return data ?? EMPTY_SUMMARY
+    },
+    // Как у таблицы: пока грузится новый отбор, показываем прошлые числа — иначе
+    // сводка моргает прочерком на каждую галочку в фильтре.
     placeholderData: keepPreviousData,
   })
 }

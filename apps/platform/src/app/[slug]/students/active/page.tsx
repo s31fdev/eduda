@@ -1,6 +1,7 @@
 import OwnerOnly from '@/src/components/owner-only'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@repo/ui/components/card'
 import EnrollmentsChart from '@/src/features/students/enrollments/components/enrollments-chart'
+import EnrollmentsSummary from '@/src/features/students/enrollments/components/enrollments-summary'
 import EnrollmentsTable from '@/src/features/students/enrollments/components/enrollments-table'
 
 export const metadata = { title: 'Активные ученики' }
@@ -24,7 +25,12 @@ export default function Page() {
           <CardTitle>Активные ученики</CardTitle>
           <CardDescription>Список всех активных учеников системы</CardDescription>
         </CardHeader>
-        <CardContent className="overflow-hidden">
+        <CardContent className="space-y-3 overflow-hidden">
+          <EnrollmentsSummary
+            label="Активных записей"
+            statuses={[...ACTIVE_STATUSES]}
+            tableId={TABLE_ID}
+          />
           <EnrollmentsTable
             statuses={[...ACTIVE_STATUSES]}
             tableId={TABLE_ID}

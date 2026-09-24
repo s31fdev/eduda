@@ -24,6 +24,7 @@ import {
   type EnrollmentGroupItem,
   type EnrollmentGroupsResult,
   type EnrollmentListResult,
+  type EnrollmentSummary,
 } from './types'
 
 type EnrollmentOrderBy = Prisma.StudentGroupOrderByWithRelationInput
@@ -216,6 +217,33 @@ export const getEnrollmentGroups = permissionAction({ student: ['read'] })
       rows: folded.slice(page * pageSize, page * pageSize + pageSize),
       total: folded.length,
     }
+  })
+
+/**
+ * Два числа над таблицей: сколько записей в отборе и сколько за ними людей.
+ * Записей всегда не меньше — ученик на двух курсах занимает две.
+ *
+ * Отдельным экшеном, а не полем в списке: от страницы и режима свёртки сводка не
+ * зависит, а плоский список при группировке не запрашивается вовсе — число
+ * пропадало бы ровно там, где на него и смотрят.
+ */
+export const getEnrollmentSummary = permissionAction({ student: ['read'] })
+  .metadata({ actionName: 'getEnrollmentSummary' })
+  .inputSchema(EnrollmentStatusChartSchema)
+  .action(async ({ ctx, parsedInput }): Promise<EnrollmentSummary> => {
+    const where = enrollmentWhere(parsedInput, ctx.session.organizationId!)
+
+    // Одной транзакцией, как список со своим `count`: числа подписывают друг
+    // друга, и посчитаны они обязаны быть по одному состоянию базы.
+    const [total, students] = await prisma.$transaction([
+      prisma.studentGroup.count({ where }),
+      // Людей считаем группировкой: «сколько разных `studentId`» Prisma иначе не
+      // выражает, а строк тут столько же, сколько учеников в отборе. `orderBy`
+      // требует сама Prisma — на длину результата он не влияет.
+      prisma.studentGroup.groupBy({ by: ['studentId'], where, orderBy: { studentId: 'asc' } }),
+    ])
+
+    return { total, students: students.length }
   })
 
 /**
