@@ -4,8 +4,11 @@ import { packageKeys } from '@/src/features/finances/payments/queries'
 import { studentKeys } from '@/src/features/students/queries'
 import {
   archiveWallet,
+  correctPackage,
   createWallet,
+  getPackageCorrectionFacts,
   getStudentWalletUnpaid,
+  giftLessons,
   getStudentWallets,
   getTransferablePackages,
   getTransferPreview,
@@ -15,7 +18,9 @@ import {
 } from './actions'
 import type {
   ArchiveWalletSchemaType,
+  CorrectPackageSchemaType,
   CreateWalletSchemaType,
+  GiftLessonsSchemaType,
   LinkGroupToWalletSchemaType,
   TransferPackagesSchemaType,
 } from './schemas'
@@ -190,5 +195,76 @@ export const useTransferPackagesMutation = (studentId: number) => {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Не удалось перенести пакеты'),
+  })
+}
+
+/** Что нужно окну правки о выбранном пакете. Расчёт по нему делает само окно. */
+export const usePackageCorrectionFactsQuery = (packageId: number | null) => {
+  return useQuery({
+    queryKey: [...walletKeys.all, 'correction', packageId] as const,
+    queryFn: async () => {
+      const { data, serverError, validationErrors } = await getPackageCorrectionFacts({
+        packageId: packageId!,
+      })
+      if (serverError) throw new Error(serverError)
+      if (validationErrors || !data) throw new Error('Не удалось прочитать пакет')
+      return data
+    },
+    enabled: packageId != null,
+  })
+}
+
+/**
+ * Правка и подарок меняют то же, что перенос: кошельки, карточку ученика, его
+ * историю и список пакетов.
+ */
+function invalidateAfterPackageEdit(
+  queryClient: ReturnType<typeof useQueryClient>,
+  studentId: number,
+) {
+  queryClient.invalidateQueries({ queryKey: walletKeys.all })
+  queryClient.invalidateQueries({ queryKey: studentKeys.detail(studentId) })
+  queryClient.invalidateQueries({ queryKey: studentKeys.balanceHistory(studentId) })
+  queryClient.invalidateQueries({ queryKey: studentKeys.all })
+  queryClient.invalidateQueries({ queryKey: packageKeys.all })
+}
+
+export const useCorrectPackageMutation = (studentId: number) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (values: CorrectPackageSchemaType) => {
+      const { data, serverError } = await correctPackage(values)
+      // Отказ ядра («потрачено уже 3 — меньше нельзя») — это ответ человеку, а не
+      // сбой: строкой из `handleServerError` он и доезжает до тоста.
+      if (serverError) throw new Error(serverError)
+      return data
+    },
+    onSuccess: (data) => {
+      invalidateAfterPackageEdit(queryClient, studentId)
+      const settled = data?.settled ?? 0
+      toast.success(
+        settled > 0 ? `Пакет исправлен. Закрыто занятий: ${settled}` : 'Пакет исправлен',
+      )
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Не удалось исправить пакет'),
+  })
+}
+
+export const useGiftLessonsMutation = (studentId: number) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (values: GiftLessonsSchemaType) => {
+      const { data, serverError } = await giftLessons(values)
+      if (serverError) throw new Error(serverError)
+      return data
+    },
+    onSuccess: (data) => {
+      invalidateAfterPackageEdit(queryClient, studentId)
+      const settled = data?.settled ?? 0
+      toast.success(settled > 0 ? `Уроки подарены. Закрыто занятий: ${settled}` : 'Уроки подарены')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Не удалось подарить уроки'),
   })
 }

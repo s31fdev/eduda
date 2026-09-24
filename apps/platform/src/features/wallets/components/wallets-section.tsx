@@ -38,6 +38,8 @@ import { useStudentWalletUnpaidQuery, walletKeys } from '@/src/features/wallets/
 import { WalletPreview } from '@/src/features/wallets/components/wallet-preview'
 import { WalletSelect } from '@/src/features/wallets/components/wallet-select'
 import { TransferPackagesDrawer } from '@/src/features/wallets/components/transfer-packages-drawer'
+import { CorrectPackageDrawer } from '@/src/features/wallets/components/correct-package-drawer'
+import { PACKAGE_EDIT_PERMISSION } from '@/src/features/wallets/schemas'
 import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import { getWalletLabel } from '@/src/features/wallets/utils'
 import { getGroupName } from '@/src/lib/utils'
@@ -47,6 +49,7 @@ import {
   ArrowLeftRight,
   Link2,
   Loader,
+  PackageOpen,
   Pen,
   Plus,
   TrendingDown,
@@ -59,7 +62,9 @@ import { toast } from 'sonner'
 // Права проверяются по ссылке на объект, поэтому он живёт в module scope.
 const CAN_MOVE_MONEY = { wallet: ['update'] } as const
 
-type DrawerType = 'create' | 'transfer' | 'link' | 'edit' | null
+// Подарок уроков (`GiftLessonsDrawer`) скрыт до решения владельца (24.09.2026):
+// ядро, экшен и окно готовы, кнопки в шапке кошелька нет.
+type DrawerType = 'create' | 'transfer' | 'link' | 'edit' | 'correct' | null
 
 interface WalletsSectionProps {
   student: StudentDetail
@@ -71,6 +76,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null)
   const queryClient = useQueryClient()
   const canMoveMoney = useHasPermission(CAN_MOVE_MONEY)
+  const canEditPackages = useHasPermission(PACKAGE_EDIT_PERMISSION)
   // Занятия, которые ждут оплаты, — по кошельку каждое. Считаются денежным
   // предикатом, а не `include`, поэтому едут своим запросом (см. хук).
   const { data: unpaidByWallet } = useStudentWalletUnpaidQuery(student.id)
@@ -85,6 +91,9 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
 
   // Transfer state
   const [transferFromWalletId, setTransferFromWalletId] = useState<number | null>(null)
+
+  // Кошелёк, пакет которого правят.
+  const [packageWalletId, setPackageWalletId] = useState<number | null>(null)
 
   // Link state
   const [linkWalletId, setLinkWalletId] = useState<string>('')
@@ -119,6 +128,11 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
   const openTransferDrawer = (walletId: number) => {
     setTransferFromWalletId(walletId)
     setActiveDrawer('transfer')
+  }
+
+  const openCorrectDrawer = (walletId: number) => {
+    setPackageWalletId(walletId)
+    setActiveDrawer('correct')
   }
 
   const openLinkDrawerForWallet = (walletId: number) => {
@@ -311,6 +325,18 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                         <ArrowLeftRight className="size-3" />
                       </Button>
                     )}
+                    {canEditPackages && w.packages.length > 0 && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-6"
+                        onClick={() => openCorrectDrawer(w.id)}
+                        disabled={isPending}
+                        title="Исправить пакет"
+                      >
+                        <PackageOpen className="size-3" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -365,7 +391,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Одна панель на все пять форм: открытую выбирает activeDrawer. */}
+      {/* Одна панель на все формы: открытую выбирает activeDrawer. */}
       <Drawer
         open={activeDrawer !== null}
         onOpenChange={(o) => !o && setActiveDrawer(null)}
@@ -412,6 +438,15 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                 setActiveDrawer(null)
                 setTransferFromWalletId(null)
               }}
+            />
+          )}
+
+          {activeDrawer === 'correct' && packageWalletId !== null && (
+            <CorrectPackageDrawer
+              student={student}
+              walletId={packageWalletId}
+              unpaidLessons={unpaidByWallet?.[packageWalletId] ?? 0}
+              onDone={() => setActiveDrawer(null)}
             />
           )}
 
@@ -491,9 +526,9 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                     />
                   </Field>
                   <FieldDescription>
-                    Баланс и суммы здесь не правятся: они складываются из оплат и посещений. Нужно
-                    добавить уроки — заведите оплату; попала не в тот кошелёк — перенесите пакет
-                    кнопкой со стрелками в шапке карточки.
+                    Баланс здесь не правится: он складывается из оплат и посещений. Пакет заведён с
+                    ошибкой — исправьте его кнопкой с коробкой; оплата попала не в тот кошелёк —
+                    перенесите пакет кнопкой со стрелками. Обе кнопки — в шапке карточки.
                   </FieldDescription>
                 </div>
               </ScrollArea>

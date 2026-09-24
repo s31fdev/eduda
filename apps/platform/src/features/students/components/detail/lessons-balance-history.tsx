@@ -82,6 +82,8 @@ const reasonLabel: Record<StudentLessonsBalanceChangeReason, string> = {
   WALLET_MERGED: 'Объединение кошельков',
   WALLET_TRANSFER: 'Перевод между кошельками',
   LESSON_CANCELLED: 'Отмена урока',
+  PACKAGE_CORRECTED: 'Исправление пакета',
+  LESSONS_GIFTED: 'Подарок уроков',
 }
 
 const fieldLabel: Record<StudentFinancialField, string> = {
@@ -116,6 +118,16 @@ type TransferMeta = {
   productName?: string
 }
 
+type CorrectionMeta = {
+  productName?: string
+  lessonCountBefore: number
+  lessonCountAfter: number
+  priceBefore: number
+  priceAfter: number
+  /** Переоценка прошедших занятий пакета — сдвиг выручки прошлых месяцев. */
+  pastRevenueDelta?: number
+}
+
 type MakeupGrantedMeta = {
   makeUpLessonId: number
   makeUpLessonName?: string
@@ -132,6 +144,24 @@ function getMetaDetails(
   const m = meta as Record<string, unknown>
 
   switch (reason) {
+    case 'PACKAGE_CORRECTED': {
+      // Что было и что стало — прямо в строке: причина лежит в колонке комментария,
+      // а сама правка без «было» ничего не объясняет.
+      const c = m as CorrectionMeta
+      const parts: string[] = []
+      if (c.lessonCountBefore !== c.lessonCountAfter) {
+        parts.push(`${c.lessonCountBefore} → ${c.lessonCountAfter} ур.`)
+      }
+      if (c.priceBefore !== c.priceAfter) parts.push(`${c.priceBefore} → ${c.priceAfter} ₽`)
+      if (c.pastRevenueDelta) {
+        const sign = c.pastRevenueDelta > 0 ? '+' : '−'
+        parts.push(`прошлые месяцы ${sign}${Math.abs(c.pastRevenueDelta)} ₽`)
+      }
+      if (c.productName) parts.push(c.productName)
+      return <span className="text-muted-foreground text-sm">{parts.join(' · ')}</span>
+    }
+
+    case 'LESSONS_GIFTED':
     case 'PAYMENT_CREATED':
     case 'PAYMENT_CANCELLED': {
       const paymentMeta = m as PaymentMeta

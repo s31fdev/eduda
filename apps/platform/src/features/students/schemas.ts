@@ -1,3 +1,4 @@
+import type { StudentLessonsBalanceChangeReason } from '@repo/db/enums'
 import { OptionalUrlSchema } from '@/src/lib/schemas'
 import { DateOnlySchema } from '@/src/lib/timezone'
 import * as z from 'zod'
@@ -58,8 +59,8 @@ export const UpdateStudentBalanceHistorySchema = z.object({
 
 // У исправления пакета и подарка уроков комментарий — причина, которую менеджер обязан
 // назвать при самой правке. Это запись аудита, поэтому её не переписывают даже с правом
-// на комментарии. Строки, а не енум: значения приходят вместе с исправлением пакетов.
-export const LOCKED_HISTORY_COMMENT_REASONS: readonly string[] = [
+// на комментарии.
+export const LOCKED_HISTORY_COMMENT_REASONS: readonly StudentLessonsBalanceChangeReason[] = [
   'PACKAGE_CORRECTED',
   'LESSONS_GIFTED',
 ]

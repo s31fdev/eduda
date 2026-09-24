@@ -6,6 +6,11 @@ import {
   countUnpaidAttendancesOfWallet,
   settleUnpaidAttendancesTx,
 } from '@/src/features/finances/ledger.server'
+import {
+  correctPackageTx,
+  giftLessonsTx,
+  readCorrectionFactsTx,
+} from '@/src/features/finances/correction.server'
 import { transferPackagesTx } from '@/src/features/finances/transfer.server'
 import { NotFoundError } from '@/src/lib/error'
 import { authAction, permissionAction } from '@/src/lib/safe-action'
@@ -14,8 +19,12 @@ import { getGroupName } from '@/src/lib/utils'
 import * as z from 'zod'
 import {
   ArchiveWalletSchema,
+  CorrectPackageSchema,
   CreateWalletSchema,
+  GiftLessonsSchema,
   LinkGroupToWalletSchema,
+  PACKAGE_EDIT_PERMISSION,
+  PackageRefSchema,
   RenameWalletSchema,
   TransferPackagesSchema,
   WalletPackagesSchema,
@@ -148,8 +157,8 @@ export const createWallet = authAction
 
 // Экшенов правки баланса и объединения кошельков здесь нет намеренно: остаток —
 // это то, что осталось от оплат после посещений, а не число, которому назначают
-// значение. Перенос ниже этого правила не нарушает: он не назначает баланс, а
-// меняет пакету владельца — баланс едет следом, ровно на непотраченный остаток.
+// значение. Перенос, исправление пакета и подарок ниже этого правила не нарушают:
+// они меняют пакет, а баланс едет следом — ровно на сдвиг его остатка.
 
 // ─── RENAME ──────────────────────────────────────────────────────────────────
 
@@ -441,6 +450,61 @@ export const transferPackages = permissionAction({ wallet: ['update'] })
           effectiveAt: todayYmdInTz(ctx.tz),
         }),
       // Гашение длинного хвоста занятий бывает небыстрым — как у продажи.
+      { timeout: 30_000 },
+    )
+  })
+
+// ─── CORRECT / GIFT ──────────────────────────────────────────────────────────
+
+/**
+ * Что окно правки должно знать о пакете: сколько с него списано и на какие деньги,
+ * пришла ли сумма из CRM. Расчёт делает само окно — той же функцией, которой потом
+ * исполняет ядро (`finances/correction.ts`), поэтому запрос один на пакет, а не на
+ * каждое нажатие клавиши.
+ */
+export const getPackageCorrectionFacts = permissionAction(PACKAGE_EDIT_PERMISSION)
+  .metadata({ actionName: 'getPackageCorrectionFacts' })
+  .inputSchema(PackageRefSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const read = await readCorrectionFactsTx(prisma, {
+      packageId: parsedInput.packageId,
+      organizationId: ctx.session.organizationId!,
+    })
+    if (!read) throw new NotFoundError('Пакет не найден')
+    return read.facts
+  })
+
+/** Исправить пакет, заведённый с ошибкой. Баланс едет следом за его остатком. */
+export const correctPackage = permissionAction(PACKAGE_EDIT_PERMISSION)
+  .metadata({ actionName: 'correctPackage' })
+  .inputSchema(CorrectPackageSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    return await prisma.$transaction(
+      async (tx) =>
+        await correctPackageTx(tx, {
+          ...parsedInput,
+          organizationId: ctx.session.organizationId!,
+          actorUserId: Number(ctx.session.user.id),
+          effectiveAt: todayYmdInTz(ctx.tz),
+        }),
+      // Прибавка гасит занятия, ждущие оплаты, — как у продажи и переноса.
+      { timeout: 30_000 },
+    )
+  })
+
+/** Подарить уроки отдельным пакетом без денег. */
+export const giftLessons = permissionAction(PACKAGE_EDIT_PERMISSION)
+  .metadata({ actionName: 'giftLessons' })
+  .inputSchema(GiftLessonsSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    return await prisma.$transaction(
+      async (tx) =>
+        await giftLessonsTx(tx, {
+          ...parsedInput,
+          organizationId: ctx.session.organizationId!,
+          actorUserId: Number(ctx.session.user.id),
+          date: todayYmdInTz(ctx.tz),
+        }),
       { timeout: 30_000 },
     )
   })

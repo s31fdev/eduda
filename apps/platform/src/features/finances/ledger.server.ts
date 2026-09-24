@@ -57,6 +57,10 @@ import { ConflictError } from '../../lib/error'
  * 2. Журнал больше не восстанавливается из колонок: `scripts/backfill-wallet-ledger.ts`
  *    выводит кошелёк исторического списания из текущего владельца пакета, а тот
  *    мог с тех пор переехать.
+ *
+ * Третье место — `correction.server.ts`: менеджер исправляет пакет, заведённый с
+ * ошибкой, или дарит уроки. Баланс и там не назначается, а едет следом за остатком
+ * пакета.
  */
 
 /**
@@ -878,9 +882,8 @@ const chargeReason = (attendance: MoneyAttendance): StudentLessonsBalanceChangeR
     : StudentLessonsBalanceChangeReason.ATTENDANCE_ABSENT_CHARGED
 }
 
-/** Цена урока по стоимости пакета. Вниз: остаток от деления школа не досчитывает. */
-export const unitPriceOf = (p: { price: number; lessonCount: number }) =>
-  p.lessonCount > 0 ? Math.floor(p.price / p.lessonCount) : 0
+// Живёт в чистом модуле: её же зовёт окно правки пакета в браузере.
+export { unitPriceOf } from './correction'
 
 /**
  * Пакет выдан: уроки уходят на баланс кошелька.
@@ -909,6 +912,10 @@ export async function activatePackageTx(
     actorUserId: number | null
     /** Дополнительные поля в историю. */
     meta?: Record<string, unknown>
+    /** Чем назвать выдачу в истории. По умолчанию это оплата; подарок называет себя сам. */
+    reason?: StudentLessonsBalanceChangeReason
+    /** Причина словами — в журнал и в историю. */
+    comment?: string
   },
 ): Promise<number> {
   const packet = await tx.package.findFirst({
@@ -964,6 +971,7 @@ export async function activatePackageTx(
     effectiveAt: packet.date,
     packageId: packet.id,
     actorUserId: args.actorUserId,
+    comment: args.comment,
   })
 
   const updated = await tx.wallet.update({
@@ -999,10 +1007,11 @@ export async function activatePackageTx(
       actorUserId: args.actorUserId,
       walletId: packet.walletId,
       field,
-      reason: StudentLessonsBalanceChangeReason.PAYMENT_CREATED,
+      reason: args.reason ?? StudentLessonsBalanceChangeReason.PAYMENT_CREATED,
       delta: updated[key] - wallet[key],
       balanceBefore: wallet[key],
       balanceAfter: updated[key],
+      comment: args.comment,
       meta,
     })
   }
@@ -1138,9 +1147,15 @@ export async function writeFinancialHistoryTx(
     balanceAfter: number
     comment?: string
     meta?: Prisma.InputJsonValue
+    /**
+     * Писать и нулевое движение. Нужно, когда строка — единственный след решения в
+     * истории ученика: правка суммы пакета баланс не двигает, а увидеть её там
+     * обязаны.
+     */
+    keepZero?: boolean
   },
 ) {
-  if (args.delta === 0) return
+  if (args.delta === 0 && !args.keepZero) return
 
   await tx.studentLessonsBalanceHistory.create({
     data: {

@@ -21,6 +21,7 @@ import {
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
+import { correctPackageTx, giftLessonsTx } from '../src/features/finances/correction.server'
 
 class Rollback extends Error {}
 
@@ -614,6 +615,226 @@ async function main() {
         balanceBeforeGuard + 6,
         'после оплаты счёта уроки обязаны лечь на баланс',
       )
+
+      // ─── Правка пакетов менеджером ─────────────────────────────────────
+      /** Проданный пакет со счётом — как его заводит форма менеджера. */
+      const sold = async (walletId: number, date: string, price: number, lessonCount: number) => {
+        const invoice = await tx.payment.create({
+          data: { organizationId, price, date, status: 'ACTIVE' },
+          select: { id: true },
+        })
+        const created = await tx.package.create({
+          data: {
+            organizationId,
+            studentId: student.id,
+            walletId,
+            paymentId: invoice.id,
+            date,
+            price,
+            lessonCount,
+            remaining: lessonCount,
+            unitPrice: unitPriceOf({ price, lessonCount }),
+          },
+          select: { id: true },
+        })
+        await activatePackageTx(tx, { packageId: created.id, organizationId, actorUserId: null })
+        return { id: created.id, paymentId: invoice.id }
+      }
+      const newWallet = async () =>
+        (
+          await tx.wallet.create({
+            data: { organizationId, studentId: student.id },
+            select: { id: true },
+          })
+        ).id
+      const correct = (packageId: number, lessonCount: number, price: number) =>
+        correctPackageTx(tx, {
+          packageId,
+          organizationId,
+          lessonCount,
+          price,
+          comment: 'проверка правки',
+          actorUserId: null,
+          effectiveAt: '2027-09-20',
+        })
+      const packetOf = (id: number) =>
+        tx.package.findUniqueOrThrow({
+          where: { id },
+          select: { lessonCount: true, remaining: true, price: true, unitPrice: true },
+        })
+      /** Всё, что обязано сходиться у кошелька после любой правки. */
+      const assertBalanced = async (walletId: number, what: string) => {
+        const b = await balance(walletId)
+        assert.equal(await ledgerSum(walletId), b, `${what}: Σ журнала = баланс`)
+        assert.equal(await remainingSum(walletId), b, `${what}: Σ остатков пакетов = баланс`)
+      }
+      const packetLedgerSum = async (packageId: number) =>
+        (await tx.walletEntry.aggregate({ where: { packageId }, _sum: { quantity: true } }))._sum
+          .quantity ?? 0
+
+      // Подарок закрывает занятие, ждущее оплаты, — бесплатно, и встаёт в очередь.
+      const giftWallet = await newWallet()
+      const waiting = await visit({ walletId: giftWallet })
+      await charge(waiting)
+      assert.equal((await entryOf(waiting)).price, null, 'платить нечем — занятие ждёт оплаты')
+      const gifted = await giftLessonsTx(tx, {
+        walletId: giftWallet,
+        organizationId,
+        lessonCount: 2,
+        comment: 'компенсация',
+        actorUserId: null,
+        date: '2027-08-01',
+      })
+      assert.equal(gifted.settled, 1, 'подарок закрывает ждущее занятие')
+      assert.deepEqual(
+        await entryOf(waiting),
+        { packageId: gifted.packageId, price: 0, amount: 1 },
+        'по цене подарка — ноль: выручки без денег нет',
+      )
+      assert.equal(await balance(giftWallet), 1, 'два подарено, одно сразу потрачено')
+      await assertBalanced(giftWallet, 'подарок')
+      const giftHistory = await tx.studentLessonsBalanceHistory.findFirstOrThrow({
+        where: { walletId: giftWallet, field: 'LESSONS_BALANCE', reason: 'LESSONS_GIFTED' },
+        select: { comment: true, delta: true },
+      })
+      assert.deepEqual(giftHistory, { comment: 'компенсация', delta: 2 }, 'подарок виден в истории')
+
+      // Взнос заведён как «1 занятие за 11 834 ₽», одно списалось, следующее ждёт
+      // оплаты. Исправляем на девять: все девять встают по 1 314 ₽, и прошедшее
+      // тоже — оно было оценено неверно вместе с пакетом.
+      const w17 = await newWallet()
+      const instalment = await sold(w17, '2027-09-01', 11_834, 1)
+      const spentOnce = await visit({ walletId: w17 })
+      await charge(spentOnce)
+      const waitingAfter = await visit({ walletId: w17 })
+      await charge(waitingAfter)
+      assert.equal((await entryOf(waitingAfter)).price, null, 'пакет кончился — занятие ждёт')
+
+      const fixed = await correct(instalment.id, 9, 11_834)
+      assert.equal(fixed.settled, 1, 'прибавка закрывает ждущее занятие')
+      assert.deepEqual(
+        await packetOf(instalment.id),
+        { lessonCount: 9, remaining: 7, price: 11_834, unitPrice: 1_314 },
+        'цена урока — сумма на количество',
+      )
+      assert.equal((await entryOf(spentOnce)).price, 1_314, 'прошедшее занятие переоценено')
+      assert.equal((await entryOf(waitingAfter)).price, 1_314, 'ждавшее — по той же цене')
+      assert.deepEqual(
+        (await ledgerOf(spentOnce)).map((e) => [e.kind, e.quantity, e.unitPrice]),
+        [
+          ['CHARGE', -1, 11_834],
+          ['REVERSAL', 1, 11_834],
+          ['CHARGE', -1, 1_314],
+        ],
+        'переоценка — парой строк, старое списание не правится',
+      )
+      assert.equal(
+        new Set((await ledgerOf(spentOnce)).map((e) => e.effectiveAt)).size,
+        1,
+        'пара датирована днём занятия — выручка сдвигается в его месяце',
+      )
+      assert.equal(await revenueOf(spentOnce), 1_314, 'выручка по журналу = новая цена строки')
+      assert.equal(await balance(w17), 7)
+      assert.equal(await packetLedgerSum(instalment.id), 7, 'Σ журнала по пакету = остаток')
+      await assertBalanced(w17, 'исправление вверх')
+      const correctionHistory = await tx.studentLessonsBalanceHistory.findFirstOrThrow({
+        where: { walletId: w17, reason: 'PACKAGE_CORRECTED', field: 'LESSONS_BALANCE' },
+        select: { comment: true, delta: true, meta: true },
+      })
+      assert.equal(correctionHistory.comment, 'проверка правки', 'правка в истории с причиной')
+      assert.equal(correctionHistory.delta, 8)
+      assert.equal(
+        (correctionHistory.meta as { pastRevenueDelta: number }).pastRevenueDelta,
+        1_314 - 11_834,
+        'в истории — насколько сдвинулись прошлые месяцы',
+      )
+
+      // Снятая после переоценки отметка возвращает урок по новой цене.
+      await tx.attendance.update({ where: { id: spentOnce }, data: { status: 'UNSPECIFIED' } })
+      await uncharge(spentOnce)
+      assert.equal(await revenueOf(spentOnce), 0, 'откат снимает ровно новую цену')
+      assert.equal(await balance(w17), 8)
+      await assertBalanced(w17, 'откат после переоценки')
+
+      // Вниз — только на непотраченное. Сумма тронутого пакета правится, и прошедшие
+      // занятия встают по новой цене.
+      await assert.rejects(() => correct(instalment.id, 0, 11_834), /Потрачено уже 1/)
+      await correct(instalment.id, 5, 11_834)
+      assert.equal(await balance(w17), 4, 'минус четыре непотраченных урока')
+      assert.equal((await entryOf(waitingAfter)).price, 2_366, 'прошедшее — по 11 834 / 5')
+      await assertBalanced(w17, 'исправление вниз')
+
+      // Опечатка в сумме, замеченная после первого занятия: «4 занятия за 54 ₽».
+      const typoWallet = await newWallet()
+      const typo = await sold(typoWallet, '2027-10-01', 54, 4)
+      const cheap = await visit({ walletId: typoWallet })
+      await charge(cheap)
+      assert.equal((await entryOf(cheap)).price, 13)
+      await correct(typo.id, 4, 5_490)
+      assert.deepEqual(await packetOf(typo.id), {
+        lessonCount: 4,
+        remaining: 3,
+        price: 5_490,
+        unitPrice: 1_372,
+      })
+      assert.equal((await entryOf(cheap)).price, 1_372, 'прошедшее занятие — по настоящей цене')
+      assert.equal(
+        (await tx.payment.findUniqueOrThrow({ where: { id: typo.paymentId } })).price,
+        5_490,
+        'счёт — сумма его пакетов',
+      )
+      assert.equal(await balance(typoWallet), 3, 'сумма уроков не двигает')
+      await assertBalanced(typoWallet, 'исправление суммы')
+
+      // Правка одной суммы на кошельке с нулевым счётчиком оплат: ни одно поле
+      // кошелька не сдвинулось, а в истории ученика она обязана остаться.
+      await tx.wallet.update({ where: { id: typoWallet }, data: { totalPayments: 0 } })
+      const historyBeforeSumOnly = await tx.studentLessonsBalanceHistory.count({
+        where: { walletId: typoWallet, reason: 'PACKAGE_CORRECTED', field: 'LESSONS_BALANCE' },
+      })
+      await correct(typo.id, 4, 5_400)
+      await correct(typo.id, 4, 5_490)
+      assert.equal(
+        await tx.studentLessonsBalanceHistory.count({
+          where: { walletId: typoWallet, reason: 'PACKAGE_CORRECTED', field: 'LESSONS_BALANCE' },
+        }),
+        historyBeforeSumOnly + 2,
+        'каждая правка — строка в истории, даже без движения баланса',
+      )
+
+      // Чего править нельзя.
+      await assert.rejects(() => correct(typo.id, 4, 5_490), /Ничего не изменилось/)
+      const legacyLeftover = await tx.package.create({
+        data: {
+          organizationId,
+          studentId: student.id,
+          walletId: typoWallet,
+          date: '2026-08-10',
+          price: 0,
+          unitPrice: 875,
+          lessonCount: 3,
+          remaining: 3,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      })
+      await assert.rejects(() => correct(legacyLeftover.id, 4, 0), /старой системы/)
+      await tx.package.update({ where: { id: typo.id }, data: { status: 'CANCELLED' } })
+      await assert.rejects(() => correct(typo.id, 5, 5_490), /Отменённый/)
+      await tx.wallet.update({ where: { id: giftWallet }, data: { status: 'ARCHIVED' } })
+      await assert.rejects(
+        () =>
+          giftLessonsTx(tx, {
+            walletId: giftWallet,
+            organizationId,
+            lessonCount: 1,
+            comment: 'проверка',
+            actorUserId: null,
+            date: '2027-08-02',
+          }),
+        /архивирован/,
+      )
+      await assert.rejects(() => correct(gifted.packageId, 3, 0), /архивирован/)
 
       throw new Rollback()
     })
