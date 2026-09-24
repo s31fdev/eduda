@@ -7,7 +7,7 @@ import { activeMessengerWhere, hasOwnMaxBot } from '@repo/core/messenger'
 import { prisma } from '@repo/db'
 import { getUnpaidLessonsOfStudent } from '@/src/features/finances/unpaid.server'
 import { recordCoins } from '@/src/lib/coins'
-import { ConflictError, NotFoundError } from '@/src/lib/error'
+import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
 import { authAction, featureAction, permissionAction } from '@/src/lib/safe-action'
 import { createStudentUserTx, hashStudentPassword } from '@/src/lib/student-auth'
 import { isFeatureDisabled } from '@/src/lib/features/registry'
@@ -18,6 +18,7 @@ import * as z from 'zod'
 import {
   CreateStudentSchema,
   DeleteStudentSchema,
+  LOCKED_HISTORY_COMMENT_REASONS,
   RevealStudentPasswordSchema,
   StudentListSchema,
   UpdateStudentBalanceHistorySchema,
@@ -572,14 +573,24 @@ export const getStudentLessonsBalanceHistory = authAction
 /**
  * Комментарий к строке истории баланса. Раньше `data` приходил из браузера как
  * есть: любой член любой школы переписывал по id чужую историю, включая дельту и
- * остатки до/после. Теперь поле одно, а строка ищется в своей школе.
+ * остатки до/после. Теперь поле одно, а строка ищется в своей школе. Комментарий к
+ * исправлению пакета и подарку уроков не правится вовсе (`LOCKED_HISTORY_COMMENT_REASONS`).
  */
 export const updateStudentBalanceHistory = permissionAction({ lessonStudentHistory: ['update'] })
   .metadata({ actionName: 'updateStudentBalanceHistory' })
   .inputSchema(UpdateStudentBalanceHistorySchema)
   .action(async ({ ctx, parsedInput }) => {
+    const where = { id: parsedInput.id, organizationId: ctx.session.organizationId! }
+    const row = await prisma.studentLessonsBalanceHistory.findFirst({
+      where,
+      select: { reason: true },
+    })
+    if (!row) throw new NotFoundError('Запись истории не найдена')
+    if (LOCKED_HISTORY_COMMENT_REASONS.includes(row.reason)) {
+      throw new ForbiddenError('Причину исправления пакета или подарка изменить нельзя')
+    }
     return await prisma.studentLessonsBalanceHistory.update({
-      where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
+      where,
       data: { comment: parsedInput.data.comment },
     })
   })

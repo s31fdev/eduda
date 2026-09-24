@@ -246,8 +246,8 @@ export const useStudentBalanceHistoryUpdateMutation = (studentId: number) => {
       queryClient.invalidateQueries({ queryKey: studentKeys.balanceHistory(studentId) })
       toast.success('Комментарий успешно обновлён')
     },
-    onError: () => {
-      toast.error('Ошибка при обновлении комментария.')
+    onError: (error) => {
+      toast.error(typeof error === 'string' ? error : 'Ошибка при обновлении комментария.')
     },
   })
 }

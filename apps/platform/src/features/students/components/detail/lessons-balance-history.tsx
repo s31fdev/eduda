@@ -45,6 +45,7 @@ import {
   useStudentBalanceHistoryQuery,
   useStudentBalanceHistoryUpdateMutation,
 } from '../../queries'
+import { LOCKED_HISTORY_COMMENT_REASONS } from '../../schemas'
 
 type HistoryRow = {
   id: number
@@ -323,13 +324,14 @@ function createColumns(studentId: number, tz: string): ColumnDef<HistoryRow>[] {
       header: () => null,
       size: ACTIONS_WIDTH,
       enableHiding: false,
-      cell: ({ row }) => (
-        <LessonsBalanceHistoryActions
-          historyId={row.original.id}
-          comment={row.original.comment}
-          studentId={studentId}
-        />
-      ),
+      cell: ({ row }) =>
+        LOCKED_HISTORY_COMMENT_REASONS.includes(row.original.reason) ? null : (
+          <LessonsBalanceHistoryActions
+            historyId={row.original.id}
+            comment={row.original.comment}
+            studentId={studentId}
+          />
+        ),
     },
   ]
 }
@@ -453,6 +455,7 @@ function LessonsBalanceHistoryActions({
               <Input
                 value={newComment ?? ''}
                 onChange={(e) => setNewComment(e.target.value)}
+                maxLength={500}
                 placeholder="комментарий"
               />
             </Field>

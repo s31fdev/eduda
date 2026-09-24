@@ -51,8 +51,18 @@ export const UpdateStudentSchema = EditStudentSchema.extend({
 // Правится только комментарий: остальные колонки строки — след движения денег.
 export const UpdateStudentBalanceHistorySchema = z.object({
   id: z.number().int().positive(),
-  data: z.object({ comment: z.string().trim().min(1, 'Укажите комментарий') }),
+  data: z.object({
+    comment: z.string().trim().min(1, 'Укажите комментарий').max(500, 'Не длиннее 500 символов'),
+  }),
 })
+
+// У исправления пакета и подарка уроков комментарий — причина, которую менеджер обязан
+// назвать при самой правке. Это запись аудита, поэтому её не переписывают даже с правом
+// на комментарии. Строки, а не енум: значения приходят вместе с исправлением пакетов.
+export const LOCKED_HISTORY_COMMENT_REASONS: readonly string[] = [
+  'PACKAGE_CORRECTED',
+  'LESSONS_GIFTED',
+]
 
 export const UpdateStudentCoinsSchema = z.object({
   studentId: z.number().int().positive(),
