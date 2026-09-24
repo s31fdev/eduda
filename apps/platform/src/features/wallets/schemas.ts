@@ -20,6 +20,14 @@ export const PACKAGE_EDIT_PERMISSION = {
   payment: ['update'],
 } as const satisfies OrganizationPermissionCheck
 
+/**
+ * Кто переносит пакеты и перевешивает группы: владелец и менеджер. Преподавателю,
+ * у которого только `wallet: ['read']`, деньги двигать нечем.
+ */
+export const MOVE_MONEY_PERMISSION = {
+  wallet: ['update'],
+} as const satisfies OrganizationPermissionCheck
+
 /** Причина правки. Обязательна: через месяц её прочитают в истории ученика. */
 const ReasonSchema = z
   .string('Напишите причину')
@@ -45,10 +53,17 @@ export const PackageRefSchema = z.object({
   packageId: z.number().int().positive(),
 })
 
-export const TransferPackagesSchema = z.object({
-  packageIds: z.array(z.number().int().positive()).min(1, 'Выберите хотя бы один пакет'),
-  toWalletId: z.number().int().positive(),
-})
+/** Перенос: пакеты и группы одного кошелька уезжают на другой — хоть что-то одно. */
+export const TransferPackagesSchema = z
+  .object({
+    fromWalletId: z.number().int().positive(),
+    toWalletId: z.number().int().positive(),
+    packageIds: z.array(z.number().int().positive()),
+    groupIds: z.array(z.number().int().positive()),
+  })
+  .refine((v) => v.packageIds.length + v.groupIds.length > 0, {
+    message: 'Выберите пакет или группу',
+  })
 
 export const WalletPackagesSchema = z.object({
   walletId: z.number().int().positive(),

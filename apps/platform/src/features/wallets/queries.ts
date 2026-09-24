@@ -31,8 +31,15 @@ export const walletKeys = {
   packages: (walletId: number) => ['wallets', 'packages', walletId] as const,
   // Порядок галочек кеш не различает: id сортируются, иначе «выбрал A, потом B» и
   // «выбрал B, потом A» — две записи с одинаковым ответом и лишний запрос на второй.
-  transferPreview: (packageIds: number[], toWalletId: number) =>
-    ['wallets', 'transfer-preview', [...packageIds].sort((a, b) => a - b), toWalletId] as const,
+  transferPreview: (v: TransferPackagesSchemaType) =>
+    [
+      'wallets',
+      'transfer-preview',
+      v.fromWalletId,
+      v.toWalletId,
+      [...v.packageIds].sort((a, b) => a - b),
+      [...v.groupIds].sort((a, b) => a - b),
+    ] as const,
 }
 
 export const useStudentWalletsQuery = (studentId: number, options?: { enabled?: boolean }) => {
@@ -153,19 +160,23 @@ export const useTransferablePackagesQuery = (walletId: number | null) => {
   })
 }
 
-export const useTransferPreviewQuery = (packageIds: number[], toWalletId: number | null) => {
+/** `null` — выбирать ещё нечего: нет получателя или ни одной галочки. */
+export const useTransferPreviewQuery = (values: TransferPackagesSchemaType | null) => {
   return useQuery({
-    queryKey: walletKeys.transferPreview(packageIds, toWalletId ?? 0),
+    queryKey: walletKeys.transferPreview(
+      values ?? { fromWalletId: 0, toWalletId: 0, packageIds: [], groupIds: [] },
+    ),
     queryFn: async () => {
-      const { data, serverError, validationErrors } = await getTransferPreview({
-        packageIds,
-        toWalletId: toWalletId!,
-      })
-      if (serverError) throw serverError
+      const { data, serverError, validationErrors } = await getTransferPreview(values!)
+      // Отказ ядра («группа уже на другом кошельке») окно показывает словами, поэтому
+      // строку заворачиваем в `Error`, как в мутации ниже.
+      if (serverError) throw new Error(serverError)
       if (validationErrors || !data) throw new Error('Не удалось посчитать перенос')
       return data
     },
-    enabled: toWalletId != null && packageIds.length > 0,
+    enabled: values !== null,
+    // Прогон вхолостую двигает настоящие деньги до отката: повтор на ошибке незачем.
+    retry: false,
     // Каждая галочка меняет ключ, а без этого `data` на время запроса становится
     // `undefined` — сводка и оба предупреждения исчезали и появлялись заново, дёргая
     // высоту панели. Показываем прежние цифры; что они пересчитываются, видно по
@@ -184,17 +195,17 @@ export const useTransferPackagesMutation = (studentId: number) => {
       if (serverError) throw new Error(serverError)
       return data
     },
-    onSuccess: (data) => {
-      // Перенос виден и в кошельках, и в карточке ученика, и в списке пакетов.
+    onSuccess: () => {
+      // Перенос виден и в кошельках, и в карточке ученика, и в списке пакетов. Что
+      // именно сдвинулось, окно назвало до сохранения — тост только подтверждает.
       queryClient.invalidateQueries({ queryKey: walletKeys.all })
       queryClient.invalidateQueries({ queryKey: studentKeys.detail(studentId) })
       queryClient.invalidateQueries({ queryKey: studentKeys.all })
       queryClient.invalidateQueries({ queryKey: packageKeys.all })
-      const settled = data?.settled ?? 0
-      toast.success(settled > 0 ? `Перенесено. Закрыто занятий: ${settled}` : 'Пакеты перенесены')
+      toast.success('Перенесено')
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Не удалось перенести пакеты'),
+      toast.error(error instanceof Error ? error.message : 'Не удалось перенести'),
   })
 }
 

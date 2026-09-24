@@ -39,7 +39,7 @@ import { WalletPreview } from '@/src/features/wallets/components/wallet-preview'
 import { WalletSelect } from '@/src/features/wallets/components/wallet-select'
 import { TransferPackagesDrawer } from '@/src/features/wallets/components/transfer-packages-drawer'
 import { CorrectPackageDrawer } from '@/src/features/wallets/components/correct-package-drawer'
-import { PACKAGE_EDIT_PERMISSION } from '@/src/features/wallets/schemas'
+import { MOVE_MONEY_PERMISSION, PACKAGE_EDIT_PERMISSION } from '@/src/features/wallets/schemas'
 import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import { getWalletLabel } from '@/src/features/wallets/utils'
 import { getGroupName } from '@/src/lib/utils'
@@ -59,9 +59,6 @@ import {
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-// Права проверяются по ссылке на объект, поэтому он живёт в module scope.
-const CAN_MOVE_MONEY = { wallet: ['update'] } as const
-
 // Подарок уроков (`GiftLessonsDrawer`) скрыт до решения владельца (24.09.2026):
 // ядро, экшен и окно готовы, кнопки в шапке кошелька нет.
 type DrawerType = 'create' | 'transfer' | 'link' | 'edit' | 'correct' | null
@@ -75,7 +72,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
   const isMobile = useIsMobile()
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null)
   const queryClient = useQueryClient()
-  const canMoveMoney = useHasPermission(CAN_MOVE_MONEY)
+  const canMoveMoney = useHasPermission(MOVE_MONEY_PERMISSION)
   const canEditPackages = useHasPermission(PACKAGE_EDIT_PERMISSION)
   // Занятия, которые ждут оплаты, — по кошельку каждое. Считаются денежным
   // предикатом, а не `include`, поэтому едут своим запросом (см. хук).
@@ -272,7 +269,8 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
               actions={
                 // Архивный кошелёк read-only, и единственное исключение — перенос, и
                 // только когда на нём остались уроки: вернуть его из архива нельзя,
-                // так что иначе остаток заперт навсегда.
+                // так что иначе остаток заперт навсегда. Когда откроется перепривязка
+                // групп, сюда добавится «или на нём висят группы».
                 w.status === 'ARCHIVED' ? (
                   <>
                     <Badge variant="outline">Архив</Badge>
@@ -301,7 +299,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                     >
                       <Pen className="size-3" />
                     </Button>
-                    {unlinkedGroups.length > 0 && (
+                    {canMoveMoney && unlinkedGroups.length > 0 && (
                       <Button
                         size="icon"
                         variant="ghost"

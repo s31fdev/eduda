@@ -1,13 +1,15 @@
-import type { Prisma } from '@repo/db'
+import { type Prisma, prisma } from '@repo/db'
 import {
   StudentFinancialField,
   StudentLessonsBalanceChangeReason,
   WalletEntryKind,
 } from '@repo/db/enums'
 // Относительные пути, а не алиасы: этот модуль запускают скрипты через tsx.
+import { UNPAID_ATTENDANCE_WHERE } from './chargeable.server'
 import {
   recordWalletEntryTx,
   settleUnpaidAttendancesTx,
+  unchargeAttendanceTx,
   writeFinancialHistoryTx,
 } from './ledger.server'
 import { ConflictError, NotFoundError } from '../../lib/error'
@@ -32,9 +34,10 @@ import { ConflictError, NotFoundError } from '../../lib/error'
  * к новому владельцу пакета (`unchargeAttendanceTx`) — следствия этого расписаны в
  * шапке `ledger.server.ts`.
  *
- * Группы здесь не перепривязываются. Если после переноса у источника остаются
- * живые группы без пакетов, их занятия будут ждать оплаты — об этом предупреждает
- * интерфейс, а перевесить группу можно вручную (`linkGroupToWallet`).
+ * Пакет группы с собой не тянет. Их перевешивает `relinkGroupTx` ниже, и окно
+ * «Перенос» делает обе вещи одним сохранением (`transferTx`). Если после переноса
+ * у источника остаются живые группы без пакетов, их занятия будут ждать оплаты —
+ * об этом предупреждает окно.
  */
 
 /** Что нужно знать о пакете, чтобы его перенести. */
@@ -310,4 +313,318 @@ export async function transferPackagesTx(
   })
 
   return { packages: packages.length, moved, settled }
+}
+
+/** Строки группы, которые перепривязка не трогает, — окно называет их по причинам. */
+export type RelinkSkipped = {
+  /** Закрыты нулём без списания в журнале: разовый визит, прощённая отработка. */
+  zero: number
+  /** Списаны «в долг» до перехода: пакета нет, урок вернуть некуда. */
+  debt: number
+  /** Списаны из пакета, который потом отменили: урок тоже вернуть некуда. */
+  cancelled: number
+}
+
+/**
+ * Группа ученика переезжает на другой его кошелёк вместе со своими деньгами.
+ *
+ * Списанные уроки группы возвращаются в свои пакеты — туда, где эти пакеты лежат
+ * сейчас, — и списываются заново из очереди нового кошелька: по датам занятий и по
+ * цене его пакетов. Выручка месяцев этих занятий поэтому двигается, в том числе
+ * закрытых (решение 24.09.2026, как у исправления пакета). Уроков не хватило —
+ * хвост ждёт оплаты. Вернувшиеся уроки сразу гасят занятия, которые ждали оплаты на
+ * своих кошельках: иначе баланс плюсовой, а занятия других групп висят.
+ *
+ * Своей денежной арифметики здесь нет: возврат — `unchargeAttendanceTx`, списание —
+ * `settleUnpaidAttendancesTx`. Журнал, балансы, остатки и история выходят теми же,
+ * что при обычной отметке.
+ *
+ * Переезжают строки, которые платит кошелёк группы (`walletOfAttendanceTx`): без
+ * кошелька на строке, не пробные, на уроках группы — кроме отработок чужих
+ * пропусков, — плюс отработки пропусков этой группы в других группах. Из них не
+ * трогаются:
+ * - оплаченные пакетами нового кошелька — поэтому повтор ничего не меняет;
+ * - закрытые нулём без списания в журнале — повторное списание выставило бы за них
+ *   счёт;
+ * - списанные «в долг» до перехода и из отменённого пакета — урок вернуть некуда, и
+ *   повторное списание взяло бы за занятие второй раз.
+ *
+ * Отметка урока этого ученика в ту же секунду не закрыта: она читает кошелёк группы
+ * до нашего коммита и спишет урок со старого кошелька.
+ */
+export async function relinkGroupTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    studentId: number
+    groupId: number
+    /** Где группа сейчас; null — группа без кошелька. */
+    fromWalletId: number | null
+    toWalletId: number
+    organizationId: number
+    actorUserId: number | null
+  },
+): Promise<{ moved: number; settled: number; skipped: RelinkSkipped }> {
+  const { studentId, groupId, organizationId, actorUserId } = args
+
+  if (args.fromWalletId === args.toWalletId) {
+    throw new ConflictError('Группа уже на этом кошельке')
+  }
+  const target = await readWalletTx(tx, args.toWalletId, organizationId)
+  if (!target) throw new NotFoundError('Кошелёк-получатель не найден')
+  if (target.studentId !== studentId) {
+    throw new ConflictError('Кошелёк принадлежит другому ученику')
+  }
+  if (target.status !== 'ACTIVE') throw new ConflictError('Кошелёк-получатель архивирован')
+  const source =
+    args.fromWalletId === null ? null : await readWalletTx(tx, args.fromWalletId, organizationId)
+
+  // Смена кошелька — она же захват: условие по прежнему, и второй менеджер со
+  // своим устаревшим снимком получит отказ. Менять раньше возврата можно: возврат
+  // кладёт урок в его пакет и кошелёк группы не спрашивает, а строки без пакета
+  // ниже не возвращаются.
+  const claimed = await tx.studentGroup.updateMany({
+    where: { studentId, groupId, organizationId, walletId: args.fromWalletId },
+    data: { walletId: target.id },
+  })
+  if (claimed.count !== 1) {
+    throw new ConflictError('Группа уже на другом кошельке — обновите страницу')
+  }
+
+  // Подпись в истории ученика: каждая строка возврата и списания говорит, откуда и
+  // куда переехала группа. Названия — снимком, как у переноса пакетов.
+  const meta = {
+    relinkGroupId: groupId,
+    relinkFrom: source ? walletLabel(source) : null,
+    relinkTo: walletLabel(target),
+  }
+
+  const rows = await tx.attendance.findMany({
+    where: {
+      // Отбор гашения, только списанные: переезжает ровно то, что списание потом
+      // возьмёт заново. Строку, которую оно не возьмёт (урок отменён, статус сменили
+      // мимо денег), возврат оставил бы неоплаченной навсегда.
+      ...UNPAID_ATTENDANCE_WHERE,
+      price: { not: null },
+      packageId: undefined,
+      organizationId,
+      studentId,
+      // С кошельком на строке строку платит он, а не группа. Вместе с отбором гашения
+      // это отсекает и пробные: без кошелька на строке они не платят вовсе.
+      walletId: null,
+      AND: [
+        {
+          OR: [
+            { makeupForAttendanceId: null, lesson: { groupId } },
+            { makeupForAttendance: { lesson: { groupId } } },
+          ],
+        },
+      ],
+    },
+    orderBy: [{ lesson: { date: 'asc' } }, { id: 'asc' }],
+    select: { id: true, package: { select: { status: true, walletId: true } } },
+  })
+
+  const skipped: RelinkSkipped = { zero: 0, debt: 0, cancelled: 0 }
+  const returnedTo = new Set<number>()
+  let moved = 0
+
+  for (const row of rows) {
+    if (row.package?.status === 'ACTIVE' && row.package.walletId === target.id) continue
+
+    const charge = await tx.walletEntry.findFirst({
+      where: { attendanceId: row.id, kind: WalletEntryKind.CHARGE, reversedBy: { is: null } },
+      select: { id: true },
+    })
+    if (!charge) {
+      skipped.zero += 1
+      continue
+    }
+    if (!row.package) {
+      skipped.debt += 1
+      continue
+    }
+    if (row.package.status !== 'ACTIVE') {
+      skipped.cancelled += 1
+      continue
+    }
+
+    await unchargeAttendanceTx(tx, { attendanceId: row.id, organizationId, actorUserId, meta })
+    returnedTo.add(row.package.walletId)
+    moved += 1
+  }
+
+  // Гасим по балансу каждого кошелька: больше, чем он держит, всё равно не спишется.
+  // Наборы занятий у кошельков разные, порядок ничего не решает.
+  let settled = 0
+  for (const walletId of [...returnedTo, target.id]) {
+    const { lessonsBalance } = await tx.wallet.findUniqueOrThrow({
+      where: { id: walletId },
+      select: { lessonsBalance: true },
+    })
+    settled += await settleUnpaidAttendancesTx(tx, {
+      walletId,
+      organizationId,
+      take: lessonsBalance,
+      actorUserId,
+      meta,
+    })
+  }
+
+  return { moved, settled, skipped }
+}
+
+type TransferArgs = {
+  fromWalletId: number
+  toWalletId: number
+  packageIds: number[]
+  groupIds: number[]
+  organizationId: number
+  actorUserId: number | null
+  /** День переноса пакетов, а не день продажи: это новое событие. */
+  effectiveAt: string
+}
+
+/**
+ * Перенос целиком, как его делает окно: пакеты и группы одного кошелька уезжают на
+ * другой, одной транзакцией.
+ *
+ * Сначала пакеты, потом группы. Уроки, оплаченные переезжающим пакетом, так и
+ * остаются за ним: когда очередь доходит до группы, пакет уже лежит у получателя, и
+ * перепривязка их не трогает. В обратном порядке они вернулись бы в пакет до его
+ * отъезда и списались бы заново — по другим ценам и без всякой нужды.
+ */
+export async function transferTx(
+  tx: Prisma.TransactionClient,
+  args: TransferArgs,
+): Promise<{ skipped: RelinkSkipped }> {
+  if (args.packageIds.length === 0 && args.groupIds.length === 0) {
+    throw new ConflictError('Не выбрано ни пакетов, ни групп')
+  }
+  const source = await readWalletTx(tx, args.fromWalletId, args.organizationId)
+  if (!source) throw new NotFoundError('Исходный кошелёк не найден')
+
+  if (args.packageIds.length > 0) {
+    await transferPackagesTx(tx, args)
+  }
+
+  const skipped: RelinkSkipped = { zero: 0, debt: 0, cancelled: 0 }
+  for (const groupId of args.groupIds) {
+    const result = await relinkGroupTx(tx, { ...args, studentId: source.studentId, groupId })
+    skipped.zero += result.skipped.zero
+    skipped.debt += result.skipped.debt
+    skipped.cancelled += result.skipped.cancelled
+  }
+  return { skipped }
+}
+
+/** Что перенос сделает с деньгами ученика — посчитанное самим переносом. */
+export type TransferReport = {
+  /** Источник, получатель и кошельки, у которых сдвинулся баланс. */
+  wallets: { id: number; name: string; before: number; after: number }[]
+  lessons: {
+    /** Были оплачены и оплачены заново — другим пакетом или по другой цене. */
+    repaid: number
+    /** Ждали оплаты — оплачены. */
+    settled: number
+    /** Были оплачены — теперь ждут оплаты. */
+    unpaid: number
+  }
+  /** Сдвиг выручки по месяцам занятий, `YYYY-MM`; нулевые месяцы не попадают. */
+  revenue: { month: string; delta: number }[]
+  skipped: RelinkSkipped
+}
+
+class DryRun extends Error {
+  constructor(readonly report: TransferReport) {
+    super('Перенос вхолостую')
+  }
+}
+
+/**
+ * Перенос, который заодно рассказывает, что он сделал.
+ *
+ * Сводка — разница «до и после» по строкам посещаемости и кошелькам ученика, а не
+ * отчёт самой операции: так в неё попадает всё, что операция задела, включая
+ * гашение чужих групп. Отдельно от `previewTransfer`, чтобы сверка могла прогнать
+ * её в своей транзакции.
+ */
+export async function transferReportTx(
+  tx: Prisma.TransactionClient,
+  args: TransferArgs,
+): Promise<TransferReport> {
+  const source = await readWalletTx(tx, args.fromWalletId, args.organizationId)
+  if (!source) throw new NotFoundError('Исходный кошелёк не найден')
+  const scope = { studentId: source.studentId, organizationId: args.organizationId }
+
+  const snapshot = async () => ({
+    rows: await tx.attendance.findMany({
+      where: scope,
+      select: { id: true, price: true, packageId: true, lesson: { select: { date: true } } },
+    }),
+    wallets: await tx.wallet.findMany({ where: scope, select: walletSelect }),
+  })
+
+  const before = await snapshot()
+  const { skipped } = await transferTx(tx, args)
+  const after = await snapshot()
+
+  const rowsBefore = new Map(before.rows.map((r) => [r.id, r]))
+  const lessons = { repaid: 0, settled: 0, unpaid: 0 }
+  const revenue = new Map<string, number>()
+  for (const now of after.rows) {
+    const was = rowsBefore.get(now.id)
+    if (!was || (was.price === now.price && was.packageId === now.packageId)) continue
+    if (was.price === null) lessons.settled += 1
+    else if (now.price === null) lessons.unpaid += 1
+    else lessons.repaid += 1
+    // Количество в строке всегда 1, поэтому выручка строки — её цена.
+    const month = now.lesson.date.slice(0, 7)
+    revenue.set(month, (revenue.get(month) ?? 0) + (now.price ?? 0) - (was.price ?? 0))
+  }
+
+  const balanceBefore = new Map(before.wallets.map((w) => [w.id, w.lessonsBalance]))
+  const rank = (id: number) => (id === args.fromWalletId ? 0 : id === args.toWalletId ? 1 : 2)
+  const wallets = after.wallets
+    .map((w) => ({
+      id: w.id,
+      name: walletLabel(w),
+      before: balanceBefore.get(w.id) ?? 0,
+      after: w.lessonsBalance,
+    }))
+    .filter((w) => w.before !== w.after || rank(w.id) < 2)
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.id - b.id)
+
+  return {
+    wallets,
+    lessons,
+    revenue: [...revenue]
+      .filter(([, delta]) => delta !== 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, delta]) => ({ month, delta })),
+    skipped,
+  }
+}
+
+/**
+ * Превью переноса — это сам перенос в транзакции, которая откатывается.
+ *
+ * Отдельный расчёт «что будет» пришлось бы держать в согласии с настоящим: очередь,
+ * возврат в пакеты, три вида строк, которые не переезжают, гашение на нескольких
+ * кошельках. Прогон вхолостую совпадает с сохранением по построению, если между
+ * ними ничего не изменилось. Цена — блокировки денег этого ученика на время прогона.
+ */
+export async function previewTransfer(args: TransferArgs): Promise<TransferReport> {
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        throw new DryRun(await transferReportTx(tx, args))
+      },
+      // Как у сохранения: гашение длинного хвоста занятий бывает небыстрым.
+      { timeout: 30_000 },
+    )
+  } catch (error) {
+    if (error instanceof DryRun) return error.report
+    throw error
+  }
+  throw new Error('Прогон вхолостую не откатился')
 }

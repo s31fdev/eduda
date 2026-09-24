@@ -109,6 +109,9 @@ type AttendanceMeta = {
   oldIsWarned: boolean | null
   attendanceId: number
   isMakeupAttendance: boolean
+  /** Строка возврата или списания из-за перепривязки группы (`relinkGroupTx`). */
+  relinkFrom?: string | null
+  relinkTo?: string
 }
 
 type TransferMeta = {
@@ -179,11 +182,21 @@ function getMetaDetails(
     case 'ATTENDANCE_REVERTED':
     case 'MAKEUP_ATTENDED_CHARGED': {
       const attendanceMeta = m as AttendanceMeta
-
-      return (
+      const link = (
         <Link href={`/lessons/${attendanceMeta.lessonId}`} className="text-primary hover:underline">
           {attendanceMeta.lessonName ?? `Урок #${attendanceMeta.lessonId}`}
         </Link>
+      )
+      if (!attendanceMeta.relinkTo) return link
+
+      // Причина у строки обычная — «возврат списания», «посещение», — а случилась
+      // она потому, что группу перевесили на другой кошелёк. Без подписи пара
+      // «вернули — списали» на старом уроке читается как чья-то правка отметки.
+      const from = attendanceMeta.relinkFrom
+      return (
+        <span className="text-muted-foreground text-sm">
+          {link} · перепривязка группы{from ? ` из «${from}»` : ''} в «{attendanceMeta.relinkTo}»
+        </span>
       )
     }
 

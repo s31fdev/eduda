@@ -4,14 +4,13 @@ import { prisma } from '@repo/db'
 import {
   countUnpaidAttendancesByWallet,
   countUnpaidAttendancesOfWallet,
-  settleUnpaidAttendancesTx,
 } from '@/src/features/finances/ledger.server'
 import {
   correctPackageTx,
   giftLessonsTx,
   readCorrectionFactsTx,
 } from '@/src/features/finances/correction.server'
-import { transferPackagesTx } from '@/src/features/finances/transfer.server'
+import { previewTransfer, relinkGroupTx, transferTx } from '@/src/features/finances/transfer.server'
 import { NotFoundError } from '@/src/lib/error'
 import { authAction, permissionAction } from '@/src/lib/safe-action'
 import { todayYmdInTz } from '@/src/lib/timezone'
@@ -23,6 +22,7 @@ import {
   CreateWalletSchema,
   GiftLessonsSchema,
   LinkGroupToWalletSchema,
+  MOVE_MONEY_PERMISSION,
   PACKAGE_EDIT_PERMISSION,
   PackageRefSchema,
   RenameWalletSchema,
@@ -183,52 +183,28 @@ export const renameWallet = authAction
 
 // ─── LINK GROUP ──────────────────────────────────────────────────────────────
 
-export const linkGroupToWallet = authAction
+/**
+ * Группа без кошелька получает кошелёк — частный случай перепривязки: списанных
+ * уроков у неё нет, остаётся гашение занятий, которые ждали оплаты.
+ *
+ * Группу, у которой кошелёк уже есть, перевешивает окно «Перенос»: захват по
+ * прежнему кошельку (`null`) не даст молча переписать чужой, как это делал экшен
+ * до перепривязки. Право то же, что у переноса: гашение двигает деньги.
+ */
+export const linkGroupToWallet = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'linkGroupToWallet' })
   .inputSchema(LinkGroupToWalletSchema)
   .action(async ({ ctx, parsedInput }) => {
-    const { studentId, groupId, walletId } = parsedInput
-    const organizationId = ctx.session.organizationId!
-
     return await prisma.$transaction(
-      async (tx) => {
-        // Validate wallet belongs to same student
-        const wallet = await tx.wallet.findFirst({
-          where: { id: walletId, organizationId },
-          select: { studentId: true, status: true, lessonsBalance: true },
-        })
-        if (!wallet) throw new Error('Кошелёк не найден')
-        if (wallet.studentId !== studentId) {
-          throw new Error('Кошелёк не принадлежит этому ученику')
-        }
-        if (wallet.status === 'ARCHIVED') {
-          throw new Error('К архивному кошельку нельзя привязать группу')
-        }
-
-        // `updateMany`, а не `update`: у составного ключа нет места для школы, а без неё
-        // запись чужой школы обновилась бы по угаданной паре id.
-        const linked = await tx.studentGroup.updateMany({
-          where: { studentId, groupId, organizationId },
-          data: { walletId },
-        })
-        if (linked.count !== 1) throw new Error('Запись ученика в группе не найдена')
-
-        // Занятия этой группы платить было нечем: кошелька у них не было вовсе, и
-        // пришедшая оплата их не увидела — `settleUnpaidAttendancesTx` ищет занятия
-        // через группы кошелька, а группа приезжает сюда уже после оплаты. Третье
-        // место, где занятие получает кошелёк (первые два — оплата и перенос
-        // пакетов), и гасить надо здесь же, иначе занятие ждёт следующей оплаты.
-        // Запрашиваем по остатку с запасом: функция выходит на первом несписавшемся.
-        const settled = await settleUnpaidAttendancesTx(tx, {
-          walletId,
-          organizationId,
-          take: wallet.lessonsBalance,
+      async (tx) =>
+        await relinkGroupTx(tx, {
+          studentId: parsedInput.studentId,
+          groupId: parsedInput.groupId,
+          fromWalletId: null,
+          toWalletId: parsedInput.walletId,
+          organizationId: ctx.session.organizationId!,
           actorUserId: Number(ctx.session.user.id),
-          meta: { settledByLinkOfGroup: groupId },
-        })
-
-        return { settled }
-      },
+        }),
       // Гашение длинного хвоста занятий бывает небыстрым — как у переноса пакетов.
       { timeout: 30_000 },
     )
@@ -307,78 +283,41 @@ export const getTransferablePackages = authAction
   })
 
 /**
- * Что покажет экран подтверждения переноса.
+ * Что покажет окно переноса до сохранения.
  *
- * Из всей сводки браузеру недоступно ровно одно — `unpaidOnTarget`: строк
- * посещаемости в карточке нет, а «ждёт оплаты» это не флажок, а предикат из
- * денежного модуля (`UNPAID_ATTENDANCE_WHERE`), и его копия в клиенте разошлась бы
- * с оригиналом. Остальное — остатки, балансы, очередь получателя, живые группы
- * источника — в карточке ученика лежит, и посчитать это на месте технически можно.
+ * Деньги считает сам перенос, прогнанный вхолостую (`previewTransfer`): балансы,
+ * какие занятия спишутся заново и по какой цене, что закроется, что повиснет, сдвиг
+ * выручки по месяцам. Отдельного расчёта рядом с настоящим здесь нет — очередь у
+ * списания одна, и второй её реализации быть не должно (та же причина, что в
+ * `wallet-preview.tsx`). Плата — запрос с прогоном на каждую галочку.
  *
- * Считается всё равно здесь целиком, и это выбор, а не необходимость: утверждения
- * про деньги делает та же сторона, которая потом их исполнит. Переоценка обязана
- * называть ту цену, по которой урок реально спишется, — а очередь у списания одна,
- * и второй её реализации в браузере быть не должно (та же причина, что в
- * `wallet-preview.tsx`).
+ * Сверху — два предупреждения про будущее, которого прогон не видит: у занятий, что
+ * ещё не прошли, строк посещаемости нет. Оба только про пакеты.
  *
- * Плата за это — запрос на каждую галочку. `unpaidOnTarget` от выбора не зависит
- * вовсе (только от кошелька-получателя), так что при желании его можно спрашивать
- * раз на кошелёк, а остальное считать в браузере. Тогда сводка станет мгновенной,
- * но денежных расчётов станет два комплекта вместо одного.
+ * Право то же, что у сохранения: прогон — это настоящие записи до отката.
  */
-export const getTransferPreview = authAction
+export const getTransferPreview = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'getTransferPreview' })
   .inputSchema(TransferPackagesSchema)
   .action(async ({ ctx, parsedInput }) => {
     const organizationId = ctx.session.organizationId!
-    const { packageIds, toWalletId } = parsedInput
+    const { fromWalletId, toWalletId, packageIds, groupIds } = parsedInput
 
-    const packages = await prisma.package.findMany({
-      where: { id: { in: packageIds }, organizationId, status: { in: ['ACTIVE', 'PENDING'] } },
-      orderBy: [{ date: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        date: true,
-        status: true,
-        remaining: true,
-        unitPrice: true,
-        walletId: true,
-      },
+    const report = await previewTransfer({
+      ...parsedInput,
+      organizationId,
+      actorUserId: Number(ctx.session.user.id),
+      effectiveAt: todayYmdInTz(ctx.tz),
     })
-    if (packages.length === 0) throw new NotFoundError('Пакеты не найдены')
 
-    const fromWalletId = packages[0]!.walletId
-    const [source, target] = await Promise.all([
-      prisma.wallet.findFirst({
-        where: { id: fromWalletId, organizationId },
-        select: {
-          id: true,
-          name: true,
-          lessonsBalance: true,
-          studentGroups: {
-            where: { status: 'ACTIVE' },
-            select: {
-              group: {
-                select: { name: true, course: { select: { name: true } }, schedules: true },
-              },
-            },
-          },
-        },
+    if (packageIds.length === 0) return { ...report, reprices: null, orphanedGroups: [] }
+
+    const [earliest, headOfTarget, leftOnSource, groupsLeft] = await Promise.all([
+      prisma.package.findFirst({
+        where: { id: { in: packageIds }, organizationId, status: 'ACTIVE' },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
+        select: { date: true, remaining: true, unitPrice: true },
       }),
-      prisma.wallet.findFirst({
-        where: { id: toWalletId, organizationId },
-        select: { id: true, name: true, lessonsBalance: true },
-      }),
-    ])
-    if (!source || !target) throw new NotFoundError('Кошелёк не найден')
-
-    // Уроки едут только с выданных пакетов: неоплаченный баланса не двигал.
-    const moved = packages
-      .filter((p) => p.status === 'ACTIVE')
-      .reduce((sum, p) => sum + p.remaining, 0)
-
-    const [unpaidOnTarget, headOfTarget, leftOnSource] = await Promise.all([
-      countUnpaidAttendancesOfWallet({ walletId: toWalletId, organizationId }),
       prisma.package.findFirst({
         where: { walletId: toWalletId, organizationId, status: 'ACTIVE', remaining: { gt: 0 } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
@@ -389,60 +328,54 @@ export const getTransferPreview = authAction
           walletId: fromWalletId,
           organizationId,
           ...TRANSFERABLE_PACKAGE_WHERE,
-          id: { notIn: packages.map((p) => p.id) },
+          id: { notIn: packageIds },
+        },
+      }),
+      prisma.studentGroup.findMany({
+        where: {
+          walletId: fromWalletId,
+          organizationId,
+          status: 'ACTIVE',
+          groupId: { notIn: groupIds },
+        },
+        select: {
+          group: { select: { name: true, course: { select: { name: true } }, schedules: true } },
         },
       }),
     ])
 
-    const targetAfter = target.lessonsBalance + moved
-
     // Переносимый пакет старше головы — он сам станет головой и начнёт задавать цену
     // будущим занятиям получателя. Это верно (за те уроки заплатили по своей цене), но
     // в отчёте выглядит неожиданно, поэтому про это надо сказать заранее.
-    const earliest = packages.find((p) => p.status === 'ACTIVE')
     const reprices =
       earliest && headOfTarget && earliest.date < headOfTarget.date
         ? { lessons: earliest.remaining, price: earliest.unitPrice, was: headOfTarget.unitPrice }
         : null
 
     return {
-      moved,
-      packages: packages.length,
-      source: {
-        name: source.name,
-        before: source.lessonsBalance,
-        after: source.lessonsBalance - moved,
-      },
-      target: { name: target.name, before: target.lessonsBalance, after: targetAfter },
-      // Больше, чем кошелёк держит, не спишется — и больше, чем занятий ждёт.
-      willSettle: Math.min(unpaidOnTarget, targetAfter),
-      unpaidOnTarget,
+      ...report,
       reprices,
-      // Живые группы, которым после переноса нечем будет платить. Считаем по
-      // непотраченному, а не по строкам пакетов: выработанные лежат на кошельке
-      // вечно, и по ним выходило, что платить есть чем, когда уроков ноль.
-      // Перепривязка здесь не делается: интерфейс называет группы и отправляет к
-      // ручной кнопке.
-      orphanedGroups:
-        leftOnSource === 0 ? source.studentGroups.map((sg) => getGroupName(sg.group)) : [],
+      // Живые группы, которые остаются на источнике, а платить им будет нечем.
+      // Считаем по непотраченному, а не по строкам пакетов: выработанные лежат на
+      // кошельке вечно, и по ним выходило, что платить есть чем, когда уроков ноль.
+      orphanedGroups: leftOnSource === 0 ? groupsLeft.map((sg) => getGroupName(sg.group)) : [],
     }
   })
 
 /**
- * Перенести пакеты на другой кошелёк того же ученика.
+ * Перенести пакеты и группы на другой кошелёк того же ученика (`transferTx`).
  *
  * Право `wallet: ['update']` — владелец и менеджер: операция двигает деньги, и
  * преподавателю, у которого только `wallet: ['read']`, она недоступна.
  */
-export const transferPackages = permissionAction({ wallet: ['update'] })
+export const transferPackages = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'transferPackages' })
   .inputSchema(TransferPackagesSchema)
   .action(async ({ ctx, parsedInput }) => {
     return await prisma.$transaction(
       async (tx) =>
-        await transferPackagesTx(tx, {
-          packageIds: parsedInput.packageIds,
-          toWalletId: parsedInput.toWalletId,
+        await transferTx(tx, {
+          ...parsedInput,
           organizationId: ctx.session.organizationId!,
           actorUserId: Number(ctx.session.user.id),
           // День переноса, а не день продажи: это новое событие, а не переписывание

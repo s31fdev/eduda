@@ -43,7 +43,7 @@ export interface StudentGroupWithStats extends Prisma.StudentGroupGetPayload<{
   stats: GroupStats
 }
 
-const StudentStatusMap = {
+export const StudentStatusMap = {
   ACTIVE: 'Активен',
   DISMISSED: 'Отчислен',
   TRANSFERRED: 'Переведён',
