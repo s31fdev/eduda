@@ -21,6 +21,7 @@ import type {
   RevealStudentPasswordSchemaType,
   StudentListSchemaType,
   UpdateStudentCoinsSchemaType,
+  UpdateStudentSchemaType,
 } from './schemas'
 
 export const studentKeys = {
@@ -169,10 +170,7 @@ export const useStudentUpdateMutation = (studentId: number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: {
-      payload: Record<string, unknown>
-      audit?: Record<string, unknown>
-    }) => {
+    mutationFn: async (input: UpdateStudentSchemaType) => {
       const { data, serverError } = await updateStudent(input)
       if (serverError) throw serverError
       return data

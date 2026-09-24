@@ -10,7 +10,6 @@ import { recordCoins } from '@/src/lib/coins'
 import { ConflictError, NotFoundError } from '@/src/lib/error'
 import { authAction, featureAction, permissionAction } from '@/src/lib/safe-action'
 import { createStudentUserTx, hashStudentPassword } from '@/src/lib/student-auth'
-import { isProfileEdit } from '@/src/lib/student-data'
 import { isFeatureDisabled } from '@/src/lib/features/registry'
 import { decryptStudentPassword } from '@/src/lib/student-password'
 import { maxBotUrl } from '@/src/lib/utils'
@@ -22,6 +21,7 @@ import {
   RevealStudentPasswordSchema,
   StudentListSchema,
   UpdateStudentCoinsSchema,
+  UpdateStudentSchema,
 } from './schemas'
 import { STUDENT_LIST_SELECT, type StudentListResult } from './types'
 
@@ -429,36 +429,32 @@ export const revealStudentPassword = permissionAction({ student: ['read'] })
 
 // ─── UPDATE ──────────────────────────────────────────────────────────────────
 
-export const updateStudent = authAction
+/**
+ * Правка анкеты ученика. Раньше экшен принимал `StudentUpdateArgs` из браузера
+ * как есть: чужой `where` открывал учеников других школ, а вложенные
+ * `wallets.updateMany` двигали баланс мимо журнала. Теперь поля перечислены
+ * схемой, а запись ищется в своей школе.
+ *
+ * Пустые дата рождения и ссылка пишутся `null`: `undefined` Prisma пропустила
+ * бы, и очистить поле было бы нельзя.
+ */
+export const updateStudent = permissionAction({ student: ['update'] })
   .metadata({ actionName: 'updateStudent' })
-  .inputSchema(
-    z.object({
-      payload: z.any(),
-      audit: z.any().optional(),
-    }),
-  )
-  .action(async ({ parsedInput }) => {
-    const payload = parsedInput.payload as Prisma.StudentUpdateArgs
-    const data = payload.data as Prisma.StudentUpdateInput | undefined
+  .inputSchema(UpdateStudentSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { studentId, firstName, lastName, birthDate, url } = parsedInput
 
-    // Деньги через этот экшен не проходят: баланс складывается из оплат и посещений,
-    // а нераспределённый остаток достался от старой системы и только уменьшается.
-    // Пришёл финансовый ключ — значит где-то остался старый вызов, и это ошибка.
-    for (const key of ['lessonsBalance', 'totalPayments', 'totalLessons'] as const) {
-      if (data && key in data) {
-        throw new ConflictError(
-          'Баланс и суммы оплат не редактируются: заведите оплату или перенесите существующую',
-        )
-      }
-    }
-
-    // Актуальность данных = дата последней правки анкеты.
-    const withTouch = (args: Prisma.StudentUpdateArgs): Prisma.StudentUpdateArgs =>
-      isProfileEdit(data)
-        ? { ...args, data: { ...(args.data as object), dataActualizedAt: new Date() } }
-        : args
-
-    await prisma.student.update(withTouch(payload))
+    await prisma.student.update({
+      where: { id: studentId, organizationId: ctx.session.organizationId! },
+      data: {
+        firstName,
+        lastName,
+        birthDate: birthDate ?? null,
+        url: url ?? null,
+        // Актуальность данных = дата последней правки анкеты.
+        dataActualizedAt: new Date(),
+      },
+    })
   })
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────

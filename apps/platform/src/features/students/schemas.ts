@@ -40,6 +40,14 @@ export const EditStudentSchema = z.object({
   ...StudentBaseFields,
 })
 
+/**
+ * Правка анкеты — только эти поля. Деньги ученика двигает денежное ядро, связи
+ * (родители, группы, кошельки) — свои экшены, поэтому вложенных записей здесь нет.
+ */
+export const UpdateStudentSchema = EditStudentSchema.extend({
+  studentId: z.number().int().positive(),
+})
+
 export const UpdateStudentCoinsSchema = z.object({
   studentId: z.number().int().positive(),
   coins: z
@@ -58,6 +66,7 @@ export const RevealStudentPasswordSchema = z.object({
 
 export type CreateStudentSchemaType = z.infer<typeof CreateStudentSchema>
 export type EditStudentSchemaType = z.infer<typeof EditStudentSchema>
+export type UpdateStudentSchemaType = z.infer<typeof UpdateStudentSchema>
 export type UpdateStudentCoinsSchemaType = z.infer<typeof UpdateStudentCoinsSchema>
 export type DeleteStudentSchemaType = z.infer<typeof DeleteStudentSchema>
 export type RevealStudentPasswordSchemaType = z.infer<typeof RevealStudentPasswordSchema>
