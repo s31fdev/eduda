@@ -2,7 +2,8 @@
 
 import { auth } from '@/src/lib/auth/server'
 import { prisma } from '@repo/db'
-import { authAction } from '@/src/lib/safe-action'
+import { ConflictError, ForbiddenError } from '@/src/lib/error'
+import { authAction, permissionAction } from '@/src/lib/safe-action'
 import { headers } from 'next/headers'
 import { z } from 'zod'
 import {
@@ -46,21 +47,49 @@ export const getMemberById = authAction
     })
   })
 
-export const createMember = authAction
+export const createMember = permissionAction({ member: ['create'] })
   .metadata({ actionName: 'createMember' })
   .inputSchema(CreateMemberSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { firstName, lastName, email, password, role } = parsedInput
-    const requestHeaders = await headers()
 
+    // Только роли из формы (`getAssignableRoles`): менеджер, преподаватель или
+    // своя роль школы. Иначе запросом мимо формы заводится владелец — в том числе
+    // составной ролью `manager,owner`: better-auth делит роли по запятой.
+    const assignable =
+      role !== 'owner' &&
+      (role === 'manager' ||
+        role === 'teacher' ||
+        (await prisma.organizationRole.findUnique({
+          where: {
+            organizationId_role: { organizationId: ctx.session.organizationId!, role },
+          },
+          select: { id: true },
+        })))
+    if (!assignable) {
+      throw new ForbiddenError('Эту роль назначить нельзя')
+    }
+
+    // better-auth отказал бы и сам, но по-английски. Почта уникальна на всю
+    // платформу, так что занять её мог и сотрудник другой школы.
+    const taken = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true },
+    })
+    if (taken) {
+      throw new ConflictError('Эта почта уже занята')
+    }
+
+    // Без заголовков намеренно: с ними better-auth проверяет глобальную
+    // admin-роль (`User.role`), а у владельцев и менеджеров школ она `user` —
+    // эндпоинт отказывал всем, кроме админов платформы. Право проверено выше,
+    // на уровне школы.
     const newUser = await auth.api.createUser({
-      headers: requestHeaders,
       body: {
         email,
         password,
         name: `${firstName} ${lastName}`,
         role: 'user',
-        data: { firstName, lastName },
       },
     })
 

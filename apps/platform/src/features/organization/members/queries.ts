@@ -79,14 +79,14 @@ export const useMemberCreateMutation = () => {
   return useMutation({
     mutationFn: async (values: CreateMemberSchemaType) => {
       const { data, serverError } = await createMember(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: memberKeys.all })
       toast.success('Сотрудник успешно создан')
     },
-    onError: () => toast.error('Ошибка при создании сотрудника'),
+    onError: (e) => toast.error(e.message || 'Ошибка при создании сотрудника'),
   })
 }
 

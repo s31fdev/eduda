@@ -40,13 +40,11 @@ export default function CreateMemberDialog() {
     },
   })
 
+  // При ошибке окно остаётся открытым с введённым: чаще всего это занятая почта,
+  // и исправить её быстрее, чем заполнять форму заново.
   const onSubmit = (values: CreateMemberSchemaType) => {
     mutate(values, {
       onSuccess: () => {
-        setDialogOpen(false)
-        form.reset()
-      },
-      onError: () => {
         setDialogOpen(false)
         form.reset()
       },
