@@ -3,7 +3,7 @@
 import { PayCheck } from '@repo/db'
 import { auth } from '@/src/lib/auth/server'
 import { prisma } from '@repo/db'
-import { authAction } from '@/src/lib/safe-action'
+import { authAction, hasPermission } from '@/src/lib/safe-action'
 import { headers } from 'next/headers'
 import { z } from 'zod'
 import type { TeacherSalaryData } from './types'
@@ -240,9 +240,13 @@ export const getSalaryPaychecks = authAction
     }),
   )
   .action(async ({ ctx, parsedInput }): Promise<PayCheck[]> => {
+    // Без `salary.readAll` страница показывает только свою карточку, но чеки
+    // приходили все — фильтр по учителю был только на клиенте.
+    const canReadAll = hasPermission(ctx.session, { salary: ['readAll'] })
     return await prisma.payCheck.findMany({
       where: {
         organizationId: ctx.session.organizationId!,
+        userId: canReadAll ? undefined : Number(ctx.session.user.id),
         date: { gte: parsedInput.startDate, lte: parsedInput.endDate },
       },
     })
