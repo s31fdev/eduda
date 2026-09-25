@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@repo/ui/components/select'
+import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import { dateToYmd, ymdToLocalDate } from '@/src/lib/timezone'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ru } from 'date-fns/locale'
@@ -46,6 +47,9 @@ import { payCheckTypeOptions } from '../paycheck-type'
 import { usePaycheckDeleteMutation, usePaycheckUpdateMutation } from '../queries'
 import { CreatePaycheckSchema, CreatePaycheckSchemaType } from '../schemas'
 
+const CAN_UPDATE = { paycheck: ['update'] } as const
+const CAN_DELETE = { paycheck: ['delete'] } as const
+
 interface PayCheckActionsProps {
   paycheck: PayCheck
   userName: string
@@ -53,6 +57,8 @@ interface PayCheckActionsProps {
 }
 
 export default function PayCheckActions({ paycheck, userName, userId }: PayCheckActionsProps) {
+  const canUpdate = useHasPermission(CAN_UPDATE)
+  const canDelete = useHasPermission(CAN_DELETE)
   const [open, setOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isDeleteDisabled, setIsDeleteDisabled] = useState(false)
@@ -117,6 +123,8 @@ export default function PayCheckActions({ paycheck, userName, userId }: PayCheck
     }
   }, [deleteDialogOpen])
 
+  if (!canUpdate && !canDelete) return null
+
   return (
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -125,28 +133,32 @@ export default function PayCheckActions({ paycheck, userName, userId }: PayCheck
         </DropdownMenuTrigger>
 
         <DropdownMenuContent className="w-max">
-          <DropdownMenuItem
-            onClick={() => {
-              setDialogOpen(true)
-              setOpen(false)
-            }}
-          >
-            <Pen />
-            Редактировать
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => {
-              setDeleteCountdown(3)
-              setIsDeleteDisabled(true)
-              setDeleteDialogOpen(true)
-              setOpen(false)
-            }}
-          >
-            <Trash />
-            Удалить
-          </DropdownMenuItem>
+          {canUpdate && (
+            <DropdownMenuItem
+              onClick={() => {
+                setDialogOpen(true)
+                setOpen(false)
+              }}
+            >
+              <Pen />
+              Редактировать
+            </DropdownMenuItem>
+          )}
+          {canUpdate && canDelete && <DropdownMenuSeparator />}
+          {canDelete && (
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                setDeleteCountdown(3)
+                setIsDeleteDisabled(true)
+                setDeleteDialogOpen(true)
+                setOpen(false)
+              }}
+            >
+              <Trash />
+              Удалить
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

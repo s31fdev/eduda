@@ -2,8 +2,8 @@
 
 import { auth } from '@/src/lib/auth/server'
 import { prisma } from '@repo/db'
-import { ConflictError, ForbiddenError } from '@/src/lib/error'
-import { authAction, permissionAction } from '@/src/lib/safe-action'
+import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
+import { authAction, hasPermission, permissionAction } from '@/src/lib/safe-action'
 import { headers } from 'next/headers'
 import { z } from 'zod'
 import {
@@ -143,6 +143,15 @@ export const getPaychecksByUser = authAction
   .metadata({ actionName: 'getPaychecksByUser' })
   .inputSchema(UserIdSchema)
   .action(async ({ ctx, parsedInput }) => {
+    // Свои чеки видит каждый, чужие — тот, кто видит все зарплаты: то же
+    // правило, что на странице «Зарплаты преподавателей».
+    if (
+      parsedInput.userId !== Number(ctx.session.user.id) &&
+      !hasPermission(ctx.session, { salary: ['readAll'] })
+    ) {
+      throw new ForbiddenError('Недостаточно прав для этого действия')
+    }
+
     return await prisma.payCheck.findMany({
       where: {
         userId: parsedInput.userId,
@@ -152,21 +161,33 @@ export const getPaychecksByUser = authAction
     })
   })
 
-export const createPaycheck = authAction
+export const createPaycheck = permissionAction({ paycheck: ['create'] })
   .metadata({ actionName: 'createPaycheck' })
   .inputSchema(CreatePaycheckWithUserSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { userId, ...data } = parsedInput
+    const organizationId = ctx.session.organizationId!
+
+    // `userId` приходит с клиента: без проверки чек ложился бы в эту школу
+    // на любого пользователя платформы.
+    const member = await prisma.member.findFirst({
+      where: { userId, organizationId },
+      select: { id: true },
+    })
+    if (!member) {
+      throw new NotFoundError('Сотрудник не найден')
+    }
+
     await prisma.payCheck.create({
       data: {
         ...data,
         userId,
-        organizationId: ctx.session.organizationId!,
+        organizationId,
       },
     })
   })
 
-export const updatePaycheck = authAction
+export const updatePaycheck = permissionAction({ paycheck: ['update'] })
   .metadata({ actionName: 'updatePaycheck' })
   .inputSchema(UpdatePaycheckSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -177,7 +198,7 @@ export const updatePaycheck = authAction
     })
   })
 
-export const deletePaycheck = authAction
+export const deletePaycheck = permissionAction({ paycheck: ['delete'] })
   .metadata({ actionName: 'deletePaycheck' })
   .inputSchema(DeletePaycheckSchema)
   .action(async ({ ctx, parsedInput }) => {

@@ -15,6 +15,7 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from '@repo/ui/components/field'
 import { Input } from '@repo/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@repo/ui/components/popover'
+import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import { dateToYmd, formatDateOnly, ymdToLocalDate } from '@/src/lib/timezone'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ru } from 'date-fns/locale'
@@ -24,12 +25,15 @@ import { Controller, useForm } from 'react-hook-form'
 import { usePaycheckCreateMutation } from '../queries'
 import { CreatePaycheckSchema, CreatePaycheckSchemaType } from '../schemas'
 
+const CAN_CREATE = { paycheck: ['create'] } as const
+
 interface AddCheckButtonProps {
   userId: number
   userName: string
 }
 
 export default function AddCheckButton({ userId, userName }: AddCheckButtonProps) {
+  const canCreate = useHasPermission(CAN_CREATE)
   const [dialogOpen, setDialogOpen] = useState(false)
   const { mutate, isPending } = usePaycheckCreateMutation(userId)
 
@@ -51,6 +55,8 @@ export default function AddCheckButton({ userId, userName }: AddCheckButtonProps
       },
     })
   }
+
+  if (!canCreate) return null
 
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
