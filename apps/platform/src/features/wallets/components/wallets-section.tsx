@@ -141,16 +141,19 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
   const handleCreate = () => {
     startTransition(async () => {
       try {
-        await createWallet({
+        const res = await createWallet({
           studentId: student.id,
           name: newWalletName || undefined,
         })
+        // next-safe-action не бросает: отказ сервера приходит полем результата.
+        if (res?.serverError || res?.validationErrors)
+          throw new Error(res.serverError ?? 'Некорректные данные')
         invalidateStudent()
         toast.success('Кошелёк создан')
         setActiveDrawer(null)
         setNewWalletName('')
-      } catch {
-        toast.error('Не удалось создать кошелёк')
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Не удалось создать кошелёк')
       }
     })
   }
@@ -164,6 +167,8 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
           groupId: Number(linkGroupId),
           walletId: Number(linkWalletId),
         })
+        if (res?.serverError || res?.validationErrors)
+          throw new Error(res.serverError ?? 'Некорректные данные')
         invalidateStudent()
         const settled = res?.data?.settled ?? 0
         toast.success(
@@ -192,7 +197,12 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
 
     startTransition(async () => {
       try {
-        await renameWallet({ walletId: editWalletId, name: editWalletName || undefined })
+        const res = await renameWallet({
+          walletId: editWalletId,
+          name: editWalletName || undefined,
+        })
+        if (res?.serverError || res?.validationErrors)
+          throw new Error(res.serverError ?? 'Некорректные данные')
         invalidateStudent()
         toast.success('Кошелёк переименован')
         setActiveDrawer(null)
@@ -211,7 +221,9 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
     if (archiveWalletId === null) return
     startTransition(async () => {
       try {
-        await archiveWallet({ walletId: archiveWalletId })
+        const res = await archiveWallet({ walletId: archiveWalletId })
+        if (res?.serverError || res?.validationErrors)
+          throw new Error(res.serverError ?? 'Некорректные данные')
         invalidateStudent()
         toast.success('Кошелёк архивирован')
         setArchiveDialogOpen(false)
