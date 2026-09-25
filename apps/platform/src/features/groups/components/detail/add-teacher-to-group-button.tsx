@@ -23,7 +23,7 @@ import {
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@repo/ui/components/item'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { Switch } from '@repo/ui/components/switch'
-import { useMemberListQuery } from '@/src/features/organization/members/queries'
+import { useActiveMemberListQuery } from '@/src/features/organization/members/queries'
 import { useRateListQuery } from '@/src/features/organization/rates/queries'
 import { OrganizationRole } from '@/src/lib/auth/server'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -98,7 +98,7 @@ interface GroupTeacherFormProps {
 }
 
 function GroupTeacherForm({ form, onSubmit }: GroupTeacherFormProps) {
-  const { data: members, isLoading: isMembersLoading } = useMemberListQuery()
+  const { data: members, isLoading: isMembersLoading } = useActiveMemberListQuery()
   const { data: rates, isLoading: isRatesLoading } = useRateListQuery()
 
   if (isMembersLoading || isRatesLoading) {

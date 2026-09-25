@@ -46,16 +46,20 @@ export default function ManagerSalaryForm<T extends FieldValues>({
 }: ManagerSalaryFormProps<T>) {
   const { data: members = [] } = useMemberListQuery()
 
-  const filteredMembers = useMemo(
+  // Выбрать можно только активного, но показать надо любого: правка ставки
+  // неактивного менеджера открывает форму с ним в поле.
+  const managers = useMemo(
     () =>
       members
         .filter((m) => m.role === 'manager' || m.role === 'owner')
         .map((m) => ({
           value: String(m.userId),
           label: m.user.name,
+          active: !m.user.banned,
         })),
     [members],
   )
+  const activeManagers = useMemo(() => managers.filter((m) => m.active), [managers])
 
   return (
     <form id={formId}>
@@ -67,10 +71,10 @@ export default function ManagerSalaryForm<T extends FieldValues>({
             <Field>
               <FieldLabel>Менеджер</FieldLabel>
               <CustomCombobox
-                items={filteredMembers}
+                items={activeManagers}
                 value={
                   field.value
-                    ? (filteredMembers.find((m) => m.value === String(field.value)) ?? null)
+                    ? (managers.find((m) => m.value === String(field.value)) ?? null)
                     : null
                 }
                 onValueChange={(item) => field.onChange(item ? Number(item.value) : undefined)}

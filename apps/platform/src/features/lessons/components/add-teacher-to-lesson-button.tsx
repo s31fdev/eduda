@@ -15,7 +15,7 @@ import {
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from '@repo/ui/components/field'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@repo/ui/components/item'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { useMemberListQuery } from '@/src/features/organization/members/queries'
+import { useActiveMemberListQuery } from '@/src/features/organization/members/queries'
 import { OrganizationRole } from '@/src/lib/auth/server'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus } from 'lucide-react'
@@ -95,7 +95,7 @@ interface LessonTeacherFormProps {
 }
 
 function LessonTeacherForm({ form, onSubmit }: LessonTeacherFormProps) {
-  const { data: members, isLoading: isMembersLoading } = useMemberListQuery()
+  const { data: members, isLoading: isMembersLoading } = useActiveMemberListQuery()
 
   if (isMembersLoading) {
     return <Skeleton className="h-full w-full" />

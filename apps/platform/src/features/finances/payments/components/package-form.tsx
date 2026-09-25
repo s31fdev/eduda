@@ -1,7 +1,7 @@
 'use client'
 
 import { memberRoleLabels } from '@/src/components/sidebar/nav-user'
-import { useMemberListQuery } from '@/src/features/organization/members/queries'
+import { useActiveMemberListQuery } from '@/src/features/organization/members/queries'
 import {
   StudentSearchCombobox,
   type StudentOption,
@@ -110,7 +110,7 @@ export default function PackageForm({ form, formId, onSubmit, disabled }: Packag
   const isMobile = useIsMobile()
   const { data: paymentMethods = EMPTY } = useActivePaymentMethodListQuery()
   const { data: products = EMPTY } = useActiveProductListQuery()
-  const { data: memberList = EMPTY } = useMemberListQuery()
+  const { data: memberList = EMPTY } = useActiveMemberListQuery()
   const { data: session } = useSessionQuery()
 
   const managerItems = useMemo(

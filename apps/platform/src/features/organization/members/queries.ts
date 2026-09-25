@@ -28,36 +28,43 @@ export const memberKeys = {
 
 // ─── Member queries ─────────────────────────────────────────────────
 
-export const useMemberListQuery = () => {
-  return useQuery({
-    queryKey: memberKeys.all,
-    queryFn: async () => {
-      const { data, serverError } = await getMembers()
-      if (serverError) throw serverError
-      return data ?? []
-    },
-  })
+type MemberList = Awaited<ReturnType<typeof getMembers>>['data'] & {}
+
+const fetchMembers = async () => {
+  const { data, serverError } = await getMembers()
+  if (serverError) throw serverError
+  return data ?? []
 }
 
 /**
- * Вне хука намеренно: TanStack кеширует результат `select` по ссылке на саму
- * функцию, и инлайн-стрелка пересобирала бы массив на каждый рендер. Потребители
- * кладут его в зависимости `useMemo` (набор опций фильтра, колонки таблицы), а
- * там новая ссылка каждый рендер означает пересчёт всего дерева таблицы.
+ * Все сотрудники, включая неактивных: список сотрудников и фильтры таблиц —
+ * у неактивного остаются группы, уроки и продажи, и искать по ним надо.
  */
-const toMemberOptions = (members: Awaited<ReturnType<typeof getMembers>>['data'] & {}) =>
+export const useMemberListQuery = () => {
+  return useQuery({ queryKey: memberKeys.all, queryFn: fetchMembers })
+}
+
+/**
+ * `select`-функции — вне хуков намеренно: TanStack кеширует результат `select` по
+ * ссылке на саму функцию, и инлайн-стрелка пересобирала бы массив на каждый рендер.
+ * Потребители кладут его в зависимости `useMemo` (набор опций фильтра, колонки
+ * таблицы), а там новая ссылка каждый рендер означает пересчёт всего дерева таблицы.
+ */
+const onlyActive = (members: MemberList) => members.filter((member) => !member.user.banned)
+
+const toMemberOptions = (members: MemberList) =>
   members.map((member) => ({ value: member.userId.toString(), label: member.user.name }))
 
+/**
+ * Для выбора сотрудника (преподаватель группы и урока, продавец, менеджер):
+ * неактивный войти не может, и назначать его на новое незачем.
+ */
+export const useActiveMemberListQuery = () => {
+  return useQuery({ queryKey: memberKeys.all, queryFn: fetchMembers, select: onlyActive })
+}
+
 export const useMappedMemberListQuery = () => {
-  return useQuery({
-    queryKey: memberKeys.all,
-    queryFn: async () => {
-      const { data, serverError } = await getMembers()
-      if (serverError) throw serverError
-      return data ?? []
-    },
-    select: toMemberOptions,
-  })
+  return useQuery({ queryKey: memberKeys.all, queryFn: fetchMembers, select: toMemberOptions })
 }
 
 export const useMemberDetailQuery = (userId: number) => {

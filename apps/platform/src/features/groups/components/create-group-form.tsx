@@ -36,7 +36,7 @@ import { EnrolledStudentRow } from '@/src/features/groups/components/enrolled-st
 import { useCourseListQuery } from '@/src/features/courses/queries'
 import { useGroupTypeListQuery } from '@/src/features/group-types/queries'
 import { useLocationListQuery } from '@/src/features/locations/queries'
-import { useMemberListQuery } from '@/src/features/organization/members/queries'
+import { useActiveMemberListQuery } from '@/src/features/organization/members/queries'
 import { useRateListQuery } from '@/src/features/organization/rates/queries'
 import {
   StudentSearchCombobox,
@@ -106,7 +106,7 @@ export default function CreateGroupForm() {
   const router = useRouter()
   const { data: courses, isLoading: isCoursesLoading } = useCourseListQuery()
   const { data: locations, isLoading: isLocationsLoading } = useLocationListQuery()
-  const { data: members, isLoading: isMembersLoading } = useMemberListQuery()
+  const { data: members, isLoading: isMembersLoading } = useActiveMemberListQuery()
   const { data: rates, isLoading: isRatesLoading } = useRateListQuery()
 
   const { data: groupTypes, isLoading: isGroupTypesLoading } = useGroupTypeListQuery()
