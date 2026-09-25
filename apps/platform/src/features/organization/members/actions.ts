@@ -104,27 +104,35 @@ export const createMember = permissionAction({ member: ['create'] })
     })
   })
 
-export const updateMember = authAction
+export const updateMember = permissionAction({ member: ['update'] })
   .metadata({ actionName: 'updateMember' })
   .inputSchema(UpdateMemberSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { memberId, userId, firstName, lastName, role, banned } = parsedInput
+    const organizationId = ctx.session.organizationId!
     const requestHeaders = await headers()
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        name: `${firstName} ${lastName || ''}`.trim(),
-        banned,
-      },
-    })
-
+    // Роль первой: better-auth проверит, что участник из этой школы и что
+    // не-владелец не трогает владельца. Раньше первой шла запись в `User` —
+    // по любому `userId` платформы и до всех проверок, так что неактивным
+    // (а `banned` не пускает и на вход) можно было сделать кого угодно.
     await auth.api.updateMemberRole({
       headers: requestHeaders,
       body: {
         memberId: memberId.toString(),
         role: role.value,
-        organizationId: ctx.session.organizationId!.toString(),
+        organizationId: organizationId.toString(),
+      },
+    })
+
+    await prisma.user.update({
+      where: {
+        id: userId,
+        members: { some: { id: Number(memberId), organizationId } },
+      },
+      data: {
+        name: `${firstName} ${lastName || ''}`.trim(),
+        banned,
       },
     })
   })
