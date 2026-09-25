@@ -48,7 +48,7 @@ export const useRoleCreateMutation = () => {
   return useMutation({
     mutationFn: async (values: CreateRoleSchemaType) => {
       const { data, serverError } = await createRole(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -66,7 +66,7 @@ export const useRoleUpdateMutation = () => {
   return useMutation({
     mutationFn: async (values: UpdateRoleSchemaType) => {
       const { data, serverError } = await updateRole(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -84,7 +84,7 @@ export const useRoleInfoUpdateMutation = () => {
   return useMutation({
     mutationFn: async (values: UpdateRoleInfoSchemaType) => {
       const { data, serverError } = await updateRoleInfo(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -104,7 +104,7 @@ export const useRoleDeleteMutation = () => {
   return useMutation({
     mutationFn: async (values: DeleteRoleSchemaType) => {
       const { data, serverError } = await deleteRole(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {

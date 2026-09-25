@@ -85,7 +85,7 @@ export const useCategoryDeleteMutation = () => {
   return useMutation({
     mutationFn: async (values: DeleteCategorySchemaType) => {
       const { data, serverError } = await deleteCategory(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -95,9 +95,7 @@ export const useCategoryDeleteMutation = () => {
     onError: (error) => {
       // Причина отказа осмысленная («в категории есть товары») — показываем её,
       // иначе staff видит только «не удалось» и не знает, что делать.
-      const message =
-        typeof error === 'string' ? error : error instanceof Error ? error.message : null
-      toast.error(message || 'Не удалось удалить категорию.')
+      toast.error(error.message || 'Не удалось удалить категорию.')
     },
   })
 }

@@ -62,7 +62,7 @@ export const useManagerSalaryCreateMutation = () => {
   return useMutation({
     mutationFn: async (values: CreateManagerSalarySchemaType) => {
       const { data, serverError } = await createManagerSalary(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -81,7 +81,7 @@ export const useManagerSalaryUpdateMutation = () => {
   return useMutation({
     mutationFn: async (values: UpdateManagerSalarySchemaType) => {
       const { data, serverError } = await updateManagerSalary(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -100,7 +100,7 @@ export const useManagerSalaryDeleteMutation = () => {
   return useMutation({
     mutationFn: async (values: DeleteManagerSalarySchemaType) => {
       const { data, serverError } = await deleteManagerSalary(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {

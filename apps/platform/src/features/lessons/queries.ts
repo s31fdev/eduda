@@ -94,7 +94,7 @@ export const useCancelLessonMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async () => {
       const { data, serverError } = await cancelLesson({ id: lessonId })
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -163,7 +163,7 @@ export const useUpdateAttendanceTrialStatusMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async (values: UpdateAttendanceTrialStatusSchemaType) => {
       const { data, serverError } = await updateAttendanceTrialStatus(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -180,7 +180,7 @@ export const useUpdateAttendanceCommentMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async (values: UpdateAttendanceCommentSchemaType) => {
       const { data, serverError } = await updateAttendanceComment(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -195,7 +195,7 @@ export const useDeleteAttendanceMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async (values: DeleteAttendanceSchemaType) => {
       const { data, serverError } = await deleteAttendance(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -229,7 +229,7 @@ export const useCreateMakeupMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async (values: CreateMakeupSchemaType) => {
       const { data, serverError } = await createMakeup(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -246,7 +246,7 @@ export const useRescheduleMakeupMutation = (lessonId: number) => {
   return useMutation({
     mutationFn: async (values: RescheduleMakeupSchemaType) => {
       const { data, serverError } = await rescheduleMakeup(values)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {

@@ -154,7 +154,7 @@ export const useStudentDeleteMutation = () => {
   return useMutation({
     mutationFn: async (input: DeleteStudentSchemaType) => {
       const { data, serverError } = await deleteStudent(input)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -193,7 +193,7 @@ export const useStudentCoinsMutation = (studentId: number) => {
   return useMutation({
     mutationFn: async (input: UpdateStudentCoinsSchemaType) => {
       const { data, serverError } = await updateStudentCoins(input)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: (_data, variables) => {
@@ -207,9 +207,7 @@ export const useStudentCoinsMutation = (studentId: number) => {
       )
     },
     onError: (error) => {
-      const message =
-        typeof error === 'string' ? error : error instanceof Error ? error.message : null
-      toast.error(message || 'Ошибка при изменении баланса монет.')
+      toast.error(error.message || 'Ошибка при изменении баланса монет.')
     },
   })
 }
@@ -222,13 +220,11 @@ export const useRevealStudentPasswordMutation = () => {
   return useMutation({
     mutationFn: async (input: RevealStudentPasswordSchemaType) => {
       const { data, serverError } = await revealStudentPassword(input)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data?.password ?? null
     },
     onError: (error) => {
-      const message =
-        typeof error === 'string' ? error : error instanceof Error ? error.message : null
-      toast.error(message || 'Не удалось показать пароль.')
+      toast.error(error.message || 'Не удалось показать пароль.')
     },
   })
 }
@@ -239,7 +235,7 @@ export const useStudentBalanceHistoryUpdateMutation = (studentId: number) => {
   return useMutation({
     mutationFn: async (input: UpdateStudentBalanceHistorySchemaType) => {
       const { data, serverError } = await updateStudentBalanceHistory(input)
-      if (serverError) throw serverError
+      if (serverError) throw new Error(serverError)
       return data
     },
     onSuccess: () => {
@@ -247,7 +243,7 @@ export const useStudentBalanceHistoryUpdateMutation = (studentId: number) => {
       toast.success('Комментарий успешно обновлён')
     },
     onError: (error) => {
-      toast.error(typeof error === 'string' ? error : 'Ошибка при обновлении комментария.')
+      toast.error(error.message || 'Ошибка при обновлении комментария.')
     },
   })
 }
