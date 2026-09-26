@@ -1,3 +1,4 @@
+import { authErrorMessage } from '@/src/app/auth/_components/auth-errors'
 import { authClient } from '@/src/lib/auth/client'
 import { getQueryClient } from '@/src/lib/query-client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -46,10 +47,10 @@ export const useSignOutMutation = () => {
       queryClient.clear()
     },
     onSuccess: () => {
-      toast.success('Successfully signed out!')
+      toast.success('Вы вышли из аккаунта')
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to sign out')
+      toast.error(error.message || 'Не удалось выйти')
     },
   })
 }
@@ -108,10 +109,10 @@ export const useSessionRevokeMutation = () => {
       queryClient.invalidateQueries({
         queryKey: meKeys.sessions(),
       })
-      toast.success('Session terminated successfully')
+      toast.success('Сеанс завершён')
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to terminate session')
+      toast.error(error.message || 'Не удалось завершить сеанс')
     },
   })
 }
@@ -124,7 +125,13 @@ interface ChangePasswordParams {
 
 export async function changePassword(params: ChangePasswordParams) {
   const { data, error } = await authClient.changePassword(params)
-  if (error) throw new Error(error.message)
+  if (error) {
+    // Здесь пользователь уже вошёл, поэтому «неверный email или пароль» из общего
+    // словаря сбивал бы с толку — ошибиться можно только в текущем пароле.
+    throw new Error(
+      error.code === 'INVALID_PASSWORD' ? 'Неверный текущий пароль' : authErrorMessage(error),
+    )
+  }
 
   return data
 }
@@ -134,10 +141,10 @@ export const useChangePasswordMutation = () => {
   return useMutation({
     mutationFn: changePassword,
     onSuccess: () => {
-      toast.success('Password changed successfully')
+      toast.success('Пароль изменён')
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to change your password')
+      toast.error(error.message || 'Не удалось сменить пароль')
     },
   })
 }

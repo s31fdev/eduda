@@ -20,16 +20,16 @@ import * as z from 'zod'
 
 const changePasswordSchema = z
   .object({
-    currentPassword: z.string().min(1, 'Текущий пароль is required'),
+    currentPassword: z.string().min(1, 'Введите текущий пароль'),
     newPassword: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
-      .max(128, 'Password must be at most 128 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
+      .min(8, 'Пароль должен быть не короче 8 символов')
+      .max(128, 'Пароль должен быть не длиннее 128 символов'),
+    confirmPassword: z.string().min(1, 'Повторите новый пароль'),
     revokeOtherSessions: z.boolean(),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
-    message: 'Passwords do not match',
+    message: 'Пароли не совпадают',
     path: ['confirmPassword'],
   })
 
