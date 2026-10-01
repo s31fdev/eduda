@@ -418,9 +418,8 @@ export async function unchargeAttendanceTx(
  * группы перегенерировали (`lesson.deleteMany` уносит посещаемость каскадом), а
  * новые строки отметили заново.
  *
- * Поштучное удаление в `lessons/actions.ts` зовёт `unchargeAttendanceTx` перед
- * каждым `delete` — эта функция ровно то же самое для `deleteMany` и каскадов,
- * чтобы правило было одно на все шесть мест, а не переписывалось в каждом.
+ * Через неё же идёт поштучное удаление в `lessons/actions.ts` — правило одно на
+ * все места, где уходят строки, а не переписывается в каждом.
  *
  * Отбор по `price` — не оптимизация, хотя и она тоже: у группы за учебный год
  * тысячи строк, а списанных из них десятки. На неоплаченной строке
@@ -446,6 +445,28 @@ export async function unchargeAttendancesTx(
   for (const attendance of charged) {
     await unchargeAttendanceTx(tx, {
       attendanceId: attendance.id,
+      organizationId: args.organizationId,
+      actorUserId: args.actorUserId,
+      meta: args.meta,
+    })
+  }
+
+  // Вместе с отработкой уходит и то, ради чего с пропуска сняли списание
+  // (`createMakeup` с возвратом урока). Пропуск без предупреждения снова платный,
+  // и списать его больше некому: оплата гасит только новые занятия. Так 28.09.2026
+  // в кошельке 1192 удалённая отработка оставила пропуск 24.09 ждать оплаты при
+  // 32 уроках на балансе. Пропуск, который удаляется вместе с ней, не трогаем.
+  const makeups = await tx.attendance.findMany({
+    where: {
+      ...args.where,
+      organizationId: args.organizationId,
+      makeupForAttendance: { is: { NOT: args.where } },
+    },
+    select: { makeupForAttendanceId: true },
+  })
+  for (const { makeupForAttendanceId } of makeups) {
+    await syncAttendanceChargeTx(tx, {
+      attendanceId: makeupForAttendanceId!,
       organizationId: args.organizationId,
       actorUserId: args.actorUserId,
       meta: args.meta,

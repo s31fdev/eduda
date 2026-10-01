@@ -24,6 +24,7 @@ import { prisma } from '@repo/db'
 import {
   activatePackageTx,
   chargeAttendanceTx,
+  unchargeAttendanceTx,
   unchargeAttendancesTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
@@ -208,6 +209,68 @@ async function main() {
       assert.equal(removed, 2, 'оба оставшихся списания снимаются')
       assert.equal(await balance(), 10, 'и весь пакет возвращается ученику целиком')
       assert.equal(await remaining(), 10, 'остаток пакета — тоже')
+
+      // ─── Удалённая отработка возвращает пропуск в оплату ───────────────
+      // Как `createMakeup` с возвратом урока: строка отработки и снятое списание пропуска.
+      const makeupFor = async (sourceId: number, date: string) => {
+        const lesson = await tx.lesson.create({
+          data: { organizationId, groupId: group.id, date, time: '12:00' },
+          select: { id: true },
+        })
+        const makeup = await tx.attendance.create({
+          data: {
+            organizationId,
+            studentId: student.id,
+            lessonId: lesson.id,
+            makeupForAttendanceId: sourceId,
+          },
+          select: { id: true },
+        })
+        await unchargeAttendanceTx(tx, {
+          attendanceId: sourceId,
+          organizationId,
+          actorUserId: null,
+        })
+        return makeup.id
+      }
+      const deleteRows = async (where: { id: number | { in: number[] } }) => {
+        await unchargeAttendancesTx(tx, { where, organizationId, actorUserId: null })
+        await tx.attendance.deleteMany({ where })
+      }
+      const priceOf = async (id: number) =>
+        (await tx.attendance.findUniqueOrThrow({ where: { id }, select: { price: true } })).price
+
+      const missed = await visit('2026-09-04', 'PRESENT')
+      await tx.attendance.update({
+        where: { id: missed.attendanceId },
+        data: { status: 'ABSENT', isWarned: false },
+      })
+      assert.equal(await balance(), 9, 'пропуск без предупреждения списан')
+
+      const makeup = await makeupFor(missed.attendanceId, '2026-09-05')
+      assert.equal(await balance(), 10, 'отработка вернула урок пропуска')
+      await deleteRows({ id: makeup })
+      assert.equal(await priceOf(missed.attendanceId), 1000, 'без отработки пропуск снова платный')
+      assert.equal(await balance(), 9, 'и урок снова списан с баланса')
+
+      // Пропуск уходит вместе с отработкой — списывать его незачем.
+      const together = await makeupFor(missed.attendanceId, '2026-09-06')
+      await deleteRows({ id: { in: [missed.attendanceId, together] } })
+      assert.equal(await balance(), 10, 'пропуск, удалённый вместе с отработкой, не списывается')
+
+      // Предупреждённый пропуск без отработки бесплатен.
+      const warned = await visit('2026-09-07', 'UNSPECIFIED')
+      await tx.attendance.update({
+        where: { id: warned.attendanceId },
+        data: { status: 'ABSENT', isWarned: true },
+      })
+      await deleteRows({ id: await makeupFor(warned.attendanceId, '2026-09-09') })
+      assert.equal(
+        await priceOf(warned.attendanceId),
+        null,
+        'предупреждённый пропуск не списывается',
+      )
+      assert.equal(await balance(), 10, 'и баланс не двигается')
 
       throw new Rollback()
     })

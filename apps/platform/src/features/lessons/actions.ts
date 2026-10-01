@@ -9,6 +9,7 @@ import {
   syncAttendanceChargeTx,
   syncTrialPriceTx,
   unchargeAttendanceTx,
+  unchargeAttendancesTx,
 } from '@/src/features/finances/ledger.server'
 import { ATTENDANCE_COINS, recordCoins } from '@/src/lib/coins'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
@@ -480,8 +481,8 @@ export const deleteAttendance = permissionAction(DELETE_ATTENDANCE_PERMISSION)
       if (!attendance) throw new NotFoundError('Запись посещаемости не найдена')
 
       // Строки не будет — значит и списания: снимаем деньги до удаления.
-      await unchargeAttendanceTx(tx, {
-        attendanceId: attendance.id,
+      await unchargeAttendancesTx(tx, {
+        where: { id: attendance.id },
         organizationId: ctx.session.organizationId!,
         actorUserId: Number(ctx.session.user.id),
         meta: { removed: 'attendance' },
@@ -501,8 +502,8 @@ export const deleteAttendanceById = permissionAction(DELETE_ATTENDANCE_PERMISSIO
       })
       if (!attendance) throw new NotFoundError('Запись посещаемости не найдена')
 
-      await unchargeAttendanceTx(tx, {
-        attendanceId: attendance.id,
+      await unchargeAttendancesTx(tx, {
+        where: { id: attendance.id },
         organizationId: ctx.session.organizationId!,
         actorUserId: Number(ctx.session.user.id),
         meta: { removed: 'attendance' },
