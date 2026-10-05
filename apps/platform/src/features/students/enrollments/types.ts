@@ -158,4 +158,21 @@ export type EnrollmentChartData = {
 export type EnrollmentSummary = {
   total: number
   students: number
+  /** Из кого состоят `students`; сумма полей равна `students`. */
+  composition: ActiveComposition
+}
+
+/**
+ * Ученики с активной записью — по тому, учатся ли они на самом деле. Правило —
+ * `composition.ts`.
+ */
+export type ActiveComposition = {
+  /** Были на обычном занятии или оплатили курс. */
+  studying: number
+  /** Были только на пробном, курс не оплачен. */
+  afterTrial: number
+  /** Не были ни на одном занятии и не платили. */
+  notStarted: number
+  /** Все активные записи — в закрытых группах. */
+  closedOnly: number
 }

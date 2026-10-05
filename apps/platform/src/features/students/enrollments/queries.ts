@@ -15,6 +15,7 @@ import type {
   EnrollmentStatusChartSchemaType,
   ReturnToGroupSchemaType,
 } from './schemas'
+import type { EnrollmentSummary } from './types'
 
 export const enrollmentKeys = {
   all: ['enrollments'] as const,
@@ -29,7 +30,11 @@ export const enrollmentKeys = {
 }
 
 const EMPTY_PAGE = { rows: [], total: 0 }
-const EMPTY_SUMMARY = { total: 0, students: 0 }
+const EMPTY_SUMMARY: EnrollmentSummary = {
+  total: 0,
+  students: 0,
+  composition: { studying: 0, afterTrial: 0, notStarted: 0, closedOnly: 0 },
+}
 
 export const useEnrollmentListQuery = (params: EnrollmentListSchemaType, enabled = true) => {
   return useQuery({
