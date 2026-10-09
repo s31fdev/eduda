@@ -537,6 +537,7 @@ export default function Onboarding() {
           configured={configured}
           // Переход межподдоменный — router.push() здесь не сработает.
           onOpen={() => {
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.href = `${protocol}://${slug}.${rootDomain}`
           }}
         />

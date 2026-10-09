@@ -54,11 +54,15 @@ export default function SignIn() {
       return
     }
 
+    // Оба перехода уводят с поддомена auth на другой хост, router.push() тут не
+    // годится. Правило линта принимает собранный шаблоном адрес за внутренний.
     if (!session.organization || !session.organization.slug) {
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = `${protocol}://${rootDomain}`
       return
     }
 
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `${protocol}://${session.organization.slug}.${rootDomain}/`
   }
 
