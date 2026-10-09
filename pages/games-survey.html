@@ -1,0 +1,1588 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Опрос про игры</title>
+    <style>
+      :root {
+        --bg: #f6f5fb;
+        --card: #ffffff;
+        --text: #1d1b2c;
+        --muted: #6b6880;
+        --line: #e3e0ef;
+        --accent: #6c4cf5;
+        --accent-soft: #ece7ff;
+        --accent-text: #ffffff;
+        --like: #12a150;
+        --like-soft: #e2f7ea;
+        --dislike: #d93a3a;
+        --dislike-soft: #fde8e8;
+        --error: #d93a3a;
+        --shadow: 0 1px 2px rgb(20 10 60 / 6%), 0 4px 16px rgb(20 10 60 / 6%);
+        --radius: 16px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #13121a;
+          --card: #1d1c27;
+          --text: #f1effa;
+          --muted: #a29fb8;
+          --line: #302e40;
+          --accent: #8b72ff;
+          --accent-soft: #2b2550;
+          --accent-text: #ffffff;
+          --like: #3ccf7a;
+          --like-soft: #173826;
+          --dislike: #ff6b6b;
+          --dislike-soft: #3d1c1f;
+          --error: #ff6b6b;
+          --shadow: none;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.45 system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 16px 16px 120px;
+      }
+      header.top {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: var(--bg);
+        padding: 12px 16px 8px;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .progress {
+        height: 8px;
+        border-radius: 99px;
+        background: var(--line);
+        overflow: hidden;
+      }
+      .progress > div {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 99px;
+        transition: width 0.3s ease;
+      }
+      .step-label {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.2;
+        margin: 8px 0 12px;
+      }
+      h2 {
+        font-size: 24px;
+        margin: 8px 0 4px;
+      }
+      .lead {
+        color: var(--muted);
+        margin: 0 0 20px;
+      }
+      .q {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 16px;
+        margin: 16px 0;
+      }
+      .q.invalid {
+        border-color: var(--error);
+      }
+      .q-title {
+        font-weight: 650;
+        font-size: 17px;
+        margin: 0 0 4px;
+      }
+      .q-hint {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 12px;
+      }
+      .q-error {
+        color: var(--error);
+        font-size: 14px;
+        margin-top: 10px;
+      }
+      .opts {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      }
+      .opts.chips {
+        grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+      }
+      .opts.wide {
+        grid-template-columns: 1fr;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+      }
+      .opt {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 48px;
+        padding: 10px 12px;
+        text-align: left;
+        background: var(--card);
+        border: 2px solid var(--line);
+        border-radius: 12px;
+        cursor: pointer;
+        transition:
+          border-color 0.12s,
+          background 0.12s;
+      }
+      .opts.chips .opt {
+        justify-content: center;
+        font-weight: 600;
+        padding: 10px 4px;
+      }
+      .opt:hover {
+        border-color: var(--accent);
+      }
+      .opt.on {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .opt .emo {
+        font-size: 24px;
+        line-height: 1;
+        flex: none;
+      }
+      .opt > span:last-child {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        hyphens: auto;
+      }
+      .opt small {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .opt:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .counter {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      .theme {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 8px 8px 12px;
+        border: 2px solid var(--line);
+        border-radius: 12px;
+      }
+      .theme.like {
+        border-color: var(--like);
+        background: var(--like-soft);
+      }
+      .theme.dislike {
+        border-color: var(--dislike);
+        background: var(--dislike-soft);
+      }
+      .theme .name {
+        flex: 1;
+      }
+      .theme button {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: 2px solid var(--line);
+        background: var(--card);
+        font-size: 20px;
+        cursor: pointer;
+      }
+      .theme.like button.l {
+        border-color: var(--like);
+      }
+      .theme.dislike button.d {
+        border-color: var(--dislike);
+      }
+      .themes {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      }
+      .ac {
+        position: relative;
+      }
+      input[type='text'],
+      textarea {
+        width: 100%;
+        font: inherit;
+        color: var(--text);
+        background: var(--card);
+        border: 2px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        outline: none;
+      }
+      input[type='text']:focus,
+      textarea:focus {
+        border-color: var(--accent);
+      }
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+      .suggest {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 4px);
+        z-index: 10;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+        overflow: hidden;
+      }
+      .suggest button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 12px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .suggest button:hover,
+      .suggest button.active {
+        background: var(--accent-soft);
+      }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 6px 6px 12px;
+        border-radius: 99px;
+        background: var(--accent-soft);
+        border: 1px solid var(--accent);
+        font-weight: 600;
+      }
+      .tag button {
+        border: 0;
+        background: none;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 2px 6px;
+        color: var(--muted);
+      }
+      .none-btn {
+        margin-top: 10px;
+      }
+      .scale {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+      }
+      .scale .opt {
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        gap: 2px;
+        padding: 8px 2px;
+        font-size: 12px;
+      }
+      .idea {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 12px;
+      }
+      .idea .big {
+        font-size: 44px;
+        line-height: 1;
+      }
+      .nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg);
+        border-top: 1px solid var(--line);
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      }
+      .nav-inner {
+        max-width: 640px;
+        margin: 0 auto;
+        display: flex;
+        gap: 10px;
+      }
+      .btn {
+        flex: 1;
+        min-height: 52px;
+        border-radius: 14px;
+        border: 2px solid var(--line);
+        background: var(--card);
+        font-weight: 650;
+        font-size: 17px;
+        cursor: pointer;
+      }
+      .btn.primary {
+        flex: 2;
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .hero {
+        text-align: center;
+        padding-top: 32px;
+      }
+      .hero .big {
+        font-size: 72px;
+        line-height: 1;
+      }
+      .facts {
+        text-align: left;
+        display: grid;
+        gap: 10px;
+        margin: 24px 0;
+      }
+      .facts div {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .hp {
+        position: absolute;
+        left: -10000px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top" id="top" hidden>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="step-label" id="step"></div>
+    </header>
+    <main id="app"></main>
+    <nav class="nav" id="nav" hidden>
+      <div class="nav-inner">
+        <button class="btn" id="back" type="button">Назад</button>
+        <button class="btn primary" id="next" type="button">Дальше</button>
+      </div>
+    </nav>
+    <div class="hp" aria-hidden="true">
+      <label>Сайт <input type="text" id="website" tabindex="-1" autocomplete="off" /></label>
+    </div>
+
+    <script>
+      'use strict'
+
+      /*
+       * Анонимный опрос учеников об играх, 2026.
+       *
+       * Ответы уходят POST'ом на /api/surveys/games (платформа ЕДУДА, тот же
+       * origin) и хранятся кодами вариантов — подписи можно править, коды нет:
+       * по ним склеиваются ответы разных лет. Новый вопрос — новый id; смысл
+       * старого вопроса поменялся — поднимите VERSION (и добавьте её в
+       * apps/platform/src/features/surveys/registry.ts).
+       *
+       * Группа берётся из ссылки: eduda.online/pages/games-survey?g=python-1
+       */
+      const SURVEY = 'games'
+      const VERSION = '2026.1'
+      const ENDPOINT = '/api/surveys/' + SURVEY
+
+      /* Идеи игр для оценки. Замените своими: id не меняйте после старта опроса. */
+      const IDEAS = [
+        {
+          id: 'obby',
+          emoji: '🧗',
+          title: 'Паркур на время',
+          text: 'Пробегай полосу препятствий быстрее друзей и открывай новые уровни.',
+        },
+        {
+          id: 'pets',
+          emoji: '🥚',
+          title: 'Симулятор питомцев',
+          text: 'Открывай яйца, собирай редких зверей и прокачивай их.',
+        },
+        {
+          id: 'horror',
+          emoji: '👻',
+          title: 'Побег из страшной школы',
+          text: 'Выберись из школы за 5 минут, пока тебя не поймали.',
+        },
+        {
+          id: 'tycoon',
+          emoji: '🏭',
+          title: 'Своя фабрика',
+          text: 'Строй фабрику, нанимай рабочих и стань самым богатым в городе.',
+        },
+        {
+          id: 'zombie',
+          emoji: '🧟',
+          title: 'Защита базы от зомби',
+          text: 'Ставь башни и ловушки и продержись как можно больше волн.',
+        },
+      ]
+
+      /* Игры для поиска. Алиасы — как дети пишут названия на самом деле. */
+      const GAMES = [
+        ['roblox', 'Roblox', 'роблокс роблакс рб'],
+        ['minecraft', 'Minecraft', 'майнкрафт майн маинкрафт maincraft'],
+        ['cs2', 'Counter-Strike 2 (CS2)', 'кс кс2 ксго cs go csgo контра'],
+        ['standoff2', 'Standoff 2', 'стандофф стендофф стандоф so2'],
+        ['brawl_stars', 'Brawl Stars', 'бравл старс бс'],
+        ['clash_royale', 'Clash Royale', 'клеш рояль клэш рояль кр'],
+        ['clash_of_clans', 'Clash of Clans', 'клеш оф кланс кок'],
+        ['block_blast', 'Block Blast', 'блок бласт'],
+        ['gta5', 'GTA 5', 'гта 5 гта5 grand theft auto'],
+        [
+          'gta_rp',
+          'GTA RP: Majestic, Grand Mobile, Black Russia',
+          'рп маджестик гранд мобайл блек раша black russia rp',
+        ],
+        ['pubg', 'PUBG / PUBG Mobile', 'пабг пубг'],
+        ['fortnite', 'Fortnite', 'фортнайт'],
+        ['dota2', 'Dota 2', 'дота'],
+        ['valorant', 'Valorant', 'валорант'],
+        ['rust', 'Rust / Oxide', 'раст оксайд'],
+        ['tanks', 'Мир танков / Tanks Blitz', 'танки world of tanks wot blitz'],
+        ['war_thunder', 'War Thunder', 'вар тандер'],
+        ['war_robots', 'War Robots', 'вар роботс'],
+        ['geometry_dash', 'Geometry Dash', 'геометри дэш геометрия даш'],
+        ['terraria', 'Terraria', 'террария'],
+        ['melon_sandbox', 'Melon Sandbox', 'мелон сандбокс'],
+        ['among_us', 'Among Us', 'амонг ас'],
+        ['subway_surfers', 'Subway Surfers', 'сабвей серф'],
+        ['fnaf', 'Five Nights at Freddy’s (FNAF)', 'фнаф фредди'],
+        ['hello_neighbor', 'Привет, сосед (Hello Neighbor)', 'hello neighbor сосед'],
+        ['poppy_playtime', 'Poppy Playtime', 'поппи плейтайм'],
+        ['genshin', 'Genshin Impact', 'геншин'],
+        ['zzz', 'Zenless Zone Zero', 'ззз zzz'],
+        ['mobile_legends', 'Mobile Legends', 'мобайл легендс млбб'],
+        ['fc', 'EA FC / FC Mobile / FIFA', 'фифа fifa фк'],
+        ['car_parking', 'Car Parking Multiplayer', 'кар паркинг'],
+        ['soul_knight', 'Soul Knight', 'соул найт'],
+        ['toca_boca', 'Toca Boca', 'тока бока'],
+        ['stumble_guys', 'Stumble Guys', 'стамбл гайс'],
+        ['plants_zombies', 'Plants vs. Zombies', 'растения против зомби пвз'],
+        ['repo', 'R.E.P.O.', 'репо repo'],
+        ['peak', 'PEAK', 'пик'],
+        ['lethal_company', 'Lethal Company', 'летал компани'],
+        ['half_life', 'Half-Life 2', 'халф лайф hl2'],
+        ['tf2', 'Team Fortress 2', 'тф2'],
+        ['stalker', 'S.T.A.L.K.E.R. / Stalcraft', 'сталкер сталкрафт'],
+        ['hoi4', 'Hearts of Iron IV', 'хойка hoi'],
+        ['sims', 'The Sims 4', 'симс'],
+        ['rdr2', 'Red Dead Redemption 2', 'рдр'],
+        ['last_of_us', 'The Last of Us', 'одни из нас'],
+        ['cyberpunk', 'Cyberpunk 2077', 'киберпанк'],
+        ['hollow_knight', 'Hollow Knight', 'холлоу найт'],
+        ['undertale', 'Undertale / Deltarune', 'андертейл дельтарун'],
+        ['mafia', 'Mafia', 'мафия'],
+        ['nfs', 'Need for Speed', 'нфс'],
+        ['forza', 'Forza Horizon', 'форза'],
+        ['steal_brainrot', 'Укради брейнрот', 'брейнрот brainrot брейн рот'],
+        ['skip_brainrot', 'Пропусти брейнрот', 'брейнрот brainrot'],
+        ['vlad_a4', 'Убеги от Влада А4', 'влад а4 a4 побег хоррор'],
+        ['standoff_cases', 'Симулятор кейсов Standoff', 'кейсы стандофф'],
+        ['plant_hybrid', 'Гибрид растения', 'гибрид растения'],
+        ['aquapark', 'Мой аквапарк', 'аквапарк'],
+        ['flip', 'Крути сальто', 'сальто'],
+        ['cs_surf', 'Сёрф или снайпер в стиле CS', 'серф сёрф снайпер'],
+      ]
+
+      const opt = (code, label, emoji, sub) => ({ code, label, emoji, sub })
+      const HOURS = [
+        opt('0', 'Не играю'),
+        opt('lt1', 'Меньше часа'),
+        opt('1_2', '1–2 часа'),
+        opt('3_5', '3–5 часов'),
+        opt('5_7', '5–7 часов'),
+        opt('7plus', 'Больше 7 часов'),
+      ]
+      const GENRES = [
+        opt('shooter', 'Шутер', '🔫', 'CS2, Standoff 2'),
+        opt('battle_royale', 'Королевская битва', '🪂', 'Fortnite, PUBG'),
+        opt('action', 'Экшн, драки', '🥊'),
+        opt('sandbox', 'Песочница', '⛏️', 'Minecraft, Melon Sandbox'),
+        opt('simulator', 'Симулятор', '🚜'),
+        opt('tycoon', 'Тайкун, кликер', '💰', 'строй и богатей'),
+        opt('obby', 'Паркур, платформер', '🧗', 'обби, Geometry Dash'),
+        opt('horror', 'Хоррор', '👻', 'FNAF, Poppy Playtime'),
+        opt('survival', 'Выживание', '🏕️', 'Rust, Terraria'),
+        opt('adventure', 'Приключения', '🗺️'),
+        opt('rpg', 'РПГ', '🧙', 'Genshin Impact'),
+        opt('strategy', 'Стратегия', '♟️', 'Hearts of Iron'),
+        opt('tower_defense', 'Tower defense', '🏰', 'защищай базу башнями'),
+        opt('puzzle', 'Головоломки', '🧩', 'Block Blast'),
+        opt('racing', 'Гонки', '🏎️'),
+        opt('sport', 'Спорт', '⚽', 'FC Mobile'),
+        opt('moba', 'MOBA', '⚔️', 'Dota 2, Mobile Legends'),
+        opt('cards', 'Карточные', '🃏', 'Clash Royale'),
+        opt('roleplay', 'Ролевые серверы', '🎭', 'GTA RP, Majestic'),
+      ]
+
+      /*
+       * Экраны анкеты. Типы вопросов: single, multi, games, themes, ideas, text.
+       * showIf(answers) — показывать ли вопрос; скрытые вопросы не отправляются.
+       */
+      const SCREENS = [
+        {
+          title: 'О себе',
+          emoji: '🙂',
+          questions: [
+            {
+              id: 'age',
+              type: 'single',
+              title: 'Сколько тебе лет?',
+              layout: 'chips',
+              options: Array.from({ length: 12 }, (_, i) => opt(String(i + 7), String(i + 7))),
+            },
+            {
+              id: 'gender',
+              type: 'single',
+              title: 'Ты мальчик или девочка?',
+              options: [
+                opt('m', 'Мальчик', '👦'),
+                opt('f', 'Девочка', '👧'),
+                opt('na', 'Не хочу отвечать', '🤐'),
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Устройства',
+          emoji: '📱',
+          questions: [
+            {
+              id: 'devices',
+              type: 'multi',
+              title: 'Какие устройства есть лично у тебя?',
+              hint: 'Можно выбрать несколько',
+              options: [
+                opt('android', 'Телефон на Android', '📱'),
+                opt('iphone', 'iPhone', '🍏'),
+                opt('tablet', 'Планшет', '📲'),
+                opt('pc', 'Компьютер или ноутбук', '💻'),
+                opt('console', 'Игровая приставка', '🎮', 'PlayStation, Xbox, Switch'),
+                opt('tv', 'Смарт-телевизор', '📺'),
+                { ...opt('none', 'Ничего из этого', '🚫'), exclusive: true },
+              ],
+            },
+            {
+              id: 'main_device',
+              type: 'single',
+              title: 'На чём ты играешь чаще всего?',
+              options: [
+                opt('phone', 'Телефон', '📱'),
+                opt('tablet', 'Планшет', '📲'),
+                opt('pc', 'Компьютер или ноутбук', '💻'),
+                opt('console', 'Приставка', '🎮'),
+                opt('tv', 'Телевизор', '📺'),
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Время',
+          emoji: '⏰',
+          questions: [
+            {
+              id: 'hours_weekday',
+              type: 'single',
+              title: 'Сколько ты играешь в обычный школьный день?',
+              options: HOURS,
+            },
+            {
+              id: 'hours_weekend',
+              type: 'single',
+              title: 'А сколько в выходной?',
+              options: HOURS,
+            },
+            {
+              id: 'session',
+              type: 'single',
+              title: 'Сколько обычно длится один заход в игру?',
+              hint: 'От того, как запустил игру, до того, как вышел',
+              options: [
+                opt('lt5', 'До 5 минут'),
+                opt('5_15', '5–15 минут'),
+                opt('15_30', '15–30 минут'),
+                opt('30_60', 'Полчаса — час'),
+                opt('gt60', 'Больше часа'),
+              ],
+            },
+            {
+              id: 'when',
+              type: 'multi',
+              title: 'Когда ты обычно играешь?',
+              hint: 'Можно выбрать несколько',
+              options: [
+                opt('breaks', 'На переменах', '🔔'),
+                opt('road', 'В дороге', '🚌'),
+                opt('after_school', 'После школы', '🎒'),
+                opt('evening', 'Вечером', '🌆'),
+                opt('night', 'Ночью', '🌙'),
+                opt('weekend', 'В выходные', '🛋️'),
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Во что ты играешь',
+          emoji: '🎮',
+          questions: [
+            {
+              id: 'games_phone',
+              type: 'games',
+              title: 'Во что ты играл на телефоне или планшете за последнюю неделю?',
+              hint: 'Начни писать название и выбери из списка. До 3 игр',
+              none: 'Не играю на телефоне',
+            },
+            {
+              id: 'games_pc',
+              type: 'games',
+              title: 'А на компьютере за последнюю неделю?',
+              hint: 'До 3 игр',
+              none: 'Не играю на компьютере',
+            },
+            {
+              id: 'games_console',
+              type: 'games',
+              title: 'А на приставке?',
+              hint: 'До 3 игр',
+              none: 'Не играю на приставке',
+              showIf: (a) => has(a.devices, 'console'),
+            },
+          ],
+        },
+        {
+          title: 'Яндекс Игры',
+          emoji: '🟡',
+          questions: [
+            {
+              id: 'yg',
+              type: 'single',
+              title: 'Ты знаешь сайт «Яндекс Игры»?',
+              options: [
+                opt('unknown', 'Не знаю, что это'),
+                opt('know_no', 'Знаю, но не играю'),
+                opt('sometimes', 'Иногда играю'),
+                opt('often', 'Часто играю'),
+              ],
+            },
+            {
+              id: 'yg_games',
+              type: 'games',
+              title: 'Во что ты играешь на Яндекс Играх?',
+              hint: 'До 3 игр. Если нет в списке — напиши название',
+              none: 'Не помню названий',
+              noneCode: 'dont_remember',
+              showIf: (a) => playsYg(a),
+            },
+            {
+              id: 'yg_find',
+              type: 'multi',
+              title: 'Как ты находишь там игры?',
+              hint: 'Можно выбрать несколько',
+              optional: true,
+              showIf: (a) => playsYg(a),
+              options: [
+                opt('main', 'На главной и в топах', '🏆'),
+                opt('search', 'Через поиск', '🔍'),
+                opt('friends', 'Советуют друзья', '🧑‍🤝‍🧑'),
+                opt('blogger', 'Увидел у блогера', '🎥'),
+                opt('ads', 'Из рекламы', '📣'),
+              ],
+            },
+            {
+              id: 'yg_why_not',
+              type: 'multi',
+              title: 'Почему ты там не играешь?',
+              hint: 'Можно выбрать несколько',
+              showIf: (a) => a.yg === 'know_no',
+              shuffle: true,
+              options: [
+                opt('boring', 'Игры скучные', '😴'),
+                opt('ads', 'Слишком много рекламы', '📺'),
+                opt('childish', 'Игры слишком детские', '🍼'),
+                opt('friends', 'Друзья там не играют', '🧑‍🤝‍🧑'),
+                opt('graphics', 'Плохая графика', '🟫'),
+                opt('enough', 'Хватает других игр', '🎮'),
+                { ...opt('other', 'Другое', '❓'), fixed: true },
+              ],
+            },
+            {
+              id: 'browser_sites',
+              type: 'multi',
+              title: 'Играешь ли ты в браузерные игры на других сайтах?',
+              hint: 'Можно выбрать несколько',
+              optional: true,
+              options: [
+                opt('vkplay', 'VK Play'),
+                opt('crazygames', 'CrazyGames'),
+                opt('poki', 'Poki'),
+                opt('other', 'На других сайтах'),
+                { ...opt('no', 'Не играю в браузере'), exclusive: true },
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Что тебе нравится',
+          emoji: '⭐',
+          questions: [
+            {
+              id: 'motives',
+              type: 'multi',
+              title: 'Что тебе больше всего нравится в играх?',
+              hint: 'Выбери до 3 вариантов',
+              max: 3,
+              shuffle: true,
+              options: [
+                opt('win', 'Побеждать и быть лучше всех', '🏆'),
+                opt('friends', 'Играть с друзьями', '🧑‍🤝‍🧑'),
+                opt('build', 'Строить и создавать', '🧱'),
+                opt('explore', 'Исследовать мир', '🗺️'),
+                opt('story', 'Интересная история', '📖'),
+                opt('progress', 'Прокачка и коллекции', '📈'),
+                opt('scary', 'Когда страшно', '😱'),
+                opt('funny', 'Когда смешно', '😂'),
+                opt('think', 'Думать и решать задачки', '🧠'),
+                opt('relax', 'Расслабиться', '😌'),
+              ],
+            },
+            {
+              id: 'with_whom',
+              type: 'multi',
+              title: 'С кем ты обычно играешь?',
+              hint: 'Можно выбрать несколько',
+              options: [
+                opt('alone', 'Один', '🧍'),
+                opt('friends_near', 'С друзьями рядом', '🛋️'),
+                opt('friends_online', 'С друзьями онлайн', '🎧'),
+                opt('strangers', 'С незнакомыми онлайн', '🌐'),
+                opt('family', 'С семьёй', '👨‍👩‍👧'),
+              ],
+            },
+            {
+              id: 'quit_game',
+              type: 'text',
+              title: 'Какую игру ты недавно бросил и почему?',
+              hint: 'Необязательно',
+              optional: true,
+              placeholder: 'Например: бросил N, потому что надоело одно и то же',
+            },
+          ],
+        },
+        {
+          title: 'Темы и графика',
+          emoji: '🎨',
+          questions: [
+            {
+              id: 'themes',
+              type: 'themes',
+              title: 'Какие темы игр тебе нравятся, а какие нет?',
+              hint: 'Отметь 👍 или 👎. Можно пропускать темы, к которым всё равно',
+              shuffle: true,
+              options: [
+                opt('memes', 'Мемы и брейнрот', '🤪'),
+                opt('horror', 'Хоррор и страшилки', '👻'),
+                opt('animals', 'Животные и питомцы', '🐶'),
+                opt('cars', 'Машины и гонки', '🏎️'),
+                opt('space', 'Космос', '🚀'),
+                opt('zombie', 'Зомби и постапокалипсис', '🧟'),
+                opt('fantasy', 'Фэнтези и магия', '🐉'),
+                opt('military', 'Война и армия', '🪖'),
+                opt('sport', 'Спорт', '⚽'),
+                opt('anime', 'Аниме', '🌸'),
+                opt('jobs', 'Профессии и работа', '👷'),
+                opt('food', 'Еда и готовка', '🍔'),
+                opt('superheroes', 'Супергерои', '🦸'),
+                opt('city', 'Город и жизнь', '🏙️'),
+              ],
+            },
+            {
+              id: 'art',
+              type: 'multi',
+              title: 'Какая графика тебе нравится больше?',
+              hint: 'Выбери до 2 вариантов',
+              max: 2,
+              shuffle: true,
+              options: [
+                opt('pixel', 'Пиксельная', '👾', 'как Terraria'),
+                opt('voxel', 'Из кубиков', '🧊', 'как Minecraft'),
+                opt('cartoon3d', 'Мультяшная 3D', '🧸', 'как Brawl Stars'),
+                opt('lowpoly', 'Простая 3D', '🔷', 'как Roblox'),
+                opt('flat2d', 'Рисованная 2D', '✏️', 'как Geometry Dash, Among Us'),
+                opt('realism', 'Как в жизни', '📷', 'как CS2, GTA 5'),
+                opt('anime', 'Аниме', '🌸', 'как Genshin Impact'),
+              ],
+            },
+            {
+              id: 'genres',
+              type: 'multi',
+              title: 'Какие жанры игр ты любишь?',
+              hint: 'Можно выбрать несколько',
+              shuffle: true,
+              options: GENRES,
+            },
+            {
+              id: 'genre_fav',
+              type: 'single',
+              title: 'А какой из них самый любимый?',
+              showIf: (a) => Array.isArray(a.genres) && a.genres.length > 1,
+              options: (a) => GENRES.filter((g) => has(a.genres, g.code)),
+            },
+          ],
+        },
+        {
+          title: 'Реклама и покупки',
+          emoji: '💰',
+          questions: [
+            {
+              id: 'rewarded_ads',
+              type: 'single',
+              title: 'Если в игре можно посмотреть рекламу и получить награду, ты…',
+              options: [
+                opt('often', 'Смотрю охотно', '👍'),
+                opt('sometimes', 'Иногда смотрю', '🤷'),
+                opt('no', 'Не смотрю, раздражает', '👎'),
+              ],
+            },
+            {
+              id: 'purchases',
+              type: 'multi',
+              title: 'Покупал ли ты что-нибудь в играх?',
+              hint: 'Суммы не нужны. Можно выбрать несколько',
+              options: [
+                opt('skins', 'Скины и одежду', '👕'),
+                opt('currency', 'Игровую валюту', '💎'),
+                opt('pass', 'Боевой пропуск', '🎟️'),
+                opt('game', 'Саму игру', '🎮'),
+                opt('other', 'Другое', '❓'),
+                { ...opt('no', 'Ничего не покупал', '🚫'), exclusive: true },
+              ],
+            },
+          ],
+        },
+        {
+          title: 'Тренды',
+          emoji: '🔥',
+          questions: [
+            {
+              id: 'discover',
+              type: 'multi',
+              title: 'Где ты узнаёшь о новых играх?',
+              hint: 'Можно выбрать несколько',
+              shuffle: true,
+              options: [
+                opt('youtube', 'YouTube', '▶️'),
+                opt('tiktok', 'TikTok', '🎵'),
+                opt('vk', 'ВКонтакте, VK Видео', '💙'),
+                opt('telegram', 'Telegram', '✈️'),
+                opt('streams', 'Стримы', '🎙️'),
+                opt('friends', 'От друзей', '🧑‍🤝‍🧑'),
+                opt('store', 'В магазине приложений', '🛒'),
+              ],
+            },
+            {
+              id: 'bloggers',
+              type: 'text',
+              title: 'Каких блогеров или стримеров ты смотришь?',
+              hint: 'Необязательно',
+              optional: true,
+              placeholder: 'Напиши несколько ников',
+            },
+            {
+              id: 'roblox_now',
+              type: 'single',
+              title: 'Ты сейчас играешь в Roblox?',
+              options: [
+                opt('yes', 'Да, как раньше'),
+                opt('less', 'Да, но реже'),
+                opt('quit', 'Бросил после блокировки'),
+                opt('never', 'Никогда не играл'),
+              ],
+            },
+            {
+              id: 'roblox_instead',
+              type: 'games',
+              title: 'Во что ты стал играть вместо Roblox?',
+              hint: 'До 3 игр',
+              none: 'Ни во что новое',
+              showIf: (a) => a.roblox_now === 'less' || a.roblox_now === 'quit',
+            },
+          ],
+        },
+        {
+          title: 'Идеи игр',
+          emoji: '💡',
+          lead: 'Мы придумываем игру. Оцени идеи: сыграл бы ты в такую?',
+          questions: [
+            { id: 'ideas', type: 'ideas', title: '' },
+            {
+              id: 'dream_game',
+              type: 'text',
+              title: 'Какой игры тебе не хватает? Опиши в одном предложении',
+              hint: 'Необязательно',
+              optional: true,
+              placeholder: 'Хочу игру, в которой…',
+            },
+          ],
+        },
+      ]
+
+      const SCALE = [
+        { v: 1, emoji: '😴', label: 'Точно нет' },
+        { v: 2, emoji: '😕', label: 'Скорее нет' },
+        { v: 3, emoji: '🤔', label: 'Может быть' },
+        { v: 4, emoji: '🙂', label: 'Скорее да' },
+        { v: 5, emoji: '🤩', label: 'Очень хочу' },
+      ]
+
+      /* ---------- состояние ---------- */
+
+      const STORE_KEY = 'games-survey-' + VERSION
+      const has = (list, code) => Array.isArray(list) && list.includes(code)
+      const playsYg = (a) => a.yg === 'sometimes' || a.yg === 'often'
+
+      let state = freshState()
+
+      function freshState() {
+        return { screen: -1, answers: {}, order: {}, startedAt: Date.now() }
+      }
+
+      function save() {
+        try {
+          sessionStorage.setItem(STORE_KEY, JSON.stringify(state))
+        } catch (e) {}
+      }
+
+      function restore() {
+        try {
+          const raw = sessionStorage.getItem(STORE_KEY)
+          if (raw) state = { ...freshState(), ...JSON.parse(raw) }
+        } catch (e) {}
+      }
+
+      function shuffled(q, options) {
+        if (!q.shuffle) return options
+        if (!state.order[q.id]) {
+          const codes = options.filter((o) => !o.fixed && !o.exclusive).map((o) => o.code)
+          for (let i = codes.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[codes[i], codes[j]] = [codes[j], codes[i]]
+          }
+          state.order[q.id] = codes
+        }
+        const order = state.order[q.id]
+        const movable = options.filter((o) => order.includes(o.code))
+        movable.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code))
+        return [...movable, ...options.filter((o) => !order.includes(o.code))]
+      }
+
+      const visible = (q) => !q.showIf || q.showIf(state.answers)
+      const optionsOf = (q) =>
+        typeof q.options === 'function' ? q.options(state.answers) : q.options
+
+      /* ---------- отрисовка ---------- */
+
+      const app = document.getElementById('app')
+      const el = (tag, attrs = {}, ...children) => {
+        const node = document.createElement(tag)
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'class') node.className = v
+          else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
+          else if (v !== false && v != null) node.setAttribute(k, v === true ? '' : v)
+        }
+        for (const child of children.flat()) {
+          if (child == null || child === false) continue
+          node.append(child instanceof Node ? child : document.createTextNode(String(child)))
+        }
+        return node
+      }
+
+      function optionButton(o, on, onClick, disabled) {
+        return el(
+          'button',
+          {
+            type: 'button',
+            class: 'opt' + (on ? ' on' : ''),
+            'aria-pressed': String(on),
+            onclick: onClick,
+            disabled,
+          },
+          o.emoji ? el('span', { class: 'emo' }, o.emoji) : null,
+          el('span', {}, o.label, o.sub ? el('small', {}, o.sub) : null),
+        )
+      }
+
+      function renderSingle(q) {
+        const value = state.answers[q.id]
+        const options = shuffled(q, optionsOf(q))
+        const layout = q.layout === 'chips' ? 'chips' : options.some((o) => o.emoji) ? '' : 'wide'
+        return el(
+          'div',
+          { class: 'opts ' + layout },
+          options.map((o) =>
+            optionButton(o, value === o.code, () => {
+              state.answers[q.id] = o.code
+              update()
+            }),
+          ),
+        )
+      }
+
+      function renderMulti(q) {
+        const value = state.answers[q.id] || []
+        const options = shuffled(q, optionsOf(q))
+        const full = q.max && value.length >= q.max
+        const box = el(
+          'div',
+          { class: 'opts' },
+          options.map((o) => {
+            const on = value.includes(o.code)
+            return optionButton(
+              o,
+              on,
+              () => {
+                let next
+                if (on) next = value.filter((c) => c !== o.code)
+                else if (o.exclusive) next = [o.code]
+                else
+                  next = [
+                    ...value.filter((c) => !options.find((x) => x.code === c)?.exclusive),
+                    o.code,
+                  ]
+                state.answers[q.id] = next
+                update()
+              },
+              !on && full && !o.exclusive,
+            )
+          }),
+        )
+        return [
+          box,
+          q.max ? el('div', { class: 'counter' }, `Выбрано ${value.length} из ${q.max}`) : null,
+        ]
+      }
+
+      const norm = (s) =>
+        s
+          .toLowerCase()
+          .replace(/ё/g, 'е')
+          .replace(/[^a-zа-я0-9]+/g, ' ')
+          .trim()
+      const GAME_INDEX = GAMES.map(([code, name, aliases]) => ({
+        code,
+        name,
+        hay: ' ' + norm(name + ' ' + aliases),
+      }))
+      const gameName = (code) =>
+        code.startsWith('other:')
+          ? code.slice(6)
+          : (GAMES.find((g) => g[0] === code) || [, code])[1]
+
+      function searchGames(text, taken) {
+        const t = norm(text)
+        if (!t) return []
+        // Совпадение с начала слова: «кс» не должно находить «роблокс».
+        return GAME_INDEX.filter((g) => !taken.includes(g.code) && g.hay.includes(' ' + t)).slice(
+          0,
+          6,
+        )
+      }
+
+      function renderGames(q) {
+        const max = 3
+        const noneCode = q.noneCode || 'none'
+        const value = state.answers[q.id] || []
+        const isNone = value.length === 1 && value[0] === noneCode
+        const parts = []
+
+        const picked = isNone ? [] : value
+        if (picked.length) {
+          parts.push(
+            el(
+              'div',
+              { class: 'tags' },
+              picked.map((code) =>
+                el(
+                  'span',
+                  { class: 'tag' },
+                  gameName(code),
+                  el(
+                    'button',
+                    {
+                      type: 'button',
+                      'aria-label': 'Убрать',
+                      onclick: () => {
+                        state.answers[q.id] = picked.filter((c) => c !== code)
+                        update()
+                      },
+                    },
+                    '×',
+                  ),
+                ),
+              ),
+            ),
+          )
+        }
+
+        if (!isNone && picked.length < max) {
+          const input = el('input', {
+            type: 'text',
+            placeholder: picked.length ? 'Ещё игра…' : 'Например, Minecraft',
+            autocomplete: 'off',
+            enterkeyhint: 'done',
+            'data-focus': q.id,
+          })
+          const list = el('div', { class: 'suggest', hidden: true })
+          let items = []
+          let active = 0
+          const add = (code) => {
+            state.answers[q.id] = [...picked, code]
+            state.focus = q.id
+            update()
+          }
+          const draw = () => {
+            const text = input.value.trim()
+            const found = searchGames(text, picked)
+            items = found.map((g) => ({ code: g.code, label: g.name }))
+            if (text.length >= 2 && !found.some((g) => norm(g.name) === norm(text))) {
+              items.push({
+                code: 'other:' + text.slice(0, 60),
+                label: `Добавить «${text.slice(0, 60)}»`,
+              })
+            }
+            active = Math.min(active, Math.max(items.length - 1, 0))
+            list.replaceChildren(
+              ...items.map((it, i) =>
+                el(
+                  'button',
+                  {
+                    type: 'button',
+                    class: i === active ? 'active' : '',
+                    onmousedown: (e) => e.preventDefault(),
+                    onclick: () => add(it.code),
+                  },
+                  it.label,
+                ),
+              ),
+            )
+            list.hidden = items.length === 0
+          }
+          input.addEventListener('input', () => {
+            active = 0
+            draw()
+          })
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') active = Math.min(active + 1, items.length - 1)
+            else if (e.key === 'ArrowUp') active = Math.max(active - 1, 0)
+            else if (e.key === 'Enter') {
+              e.preventDefault()
+              if (items[active]) add(items[active].code)
+              return
+            } else return
+            e.preventDefault()
+            draw()
+          })
+          input.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150))
+          input.addEventListener('focus', draw)
+          parts.push(el('div', { class: 'ac' }, input, list))
+        }
+
+        if (!picked.length) {
+          parts.push(
+            el(
+              'div',
+              { class: 'none-btn' },
+              optionButton(opt(noneCode, q.none, '🚫'), isNone, () => {
+                state.answers[q.id] = isNone ? [] : [noneCode]
+                update()
+              }),
+            ),
+          )
+        }
+        return parts
+      }
+
+      function renderThemes(q) {
+        const like = state.answers.themes_like || []
+        const dislike = state.answers.themes_dislike || []
+        const set = (code, kind) => {
+          const l = like.filter((c) => c !== code)
+          const d = dislike.filter((c) => c !== code)
+          const wasOn = (kind === 'l' ? like : dislike).includes(code)
+          if (!wasOn) (kind === 'l' ? l : d).push(code)
+          state.answers.themes_like = l
+          state.answers.themes_dislike = d
+          update()
+        }
+        return el(
+          'div',
+          { class: 'themes' },
+          shuffled(q, q.options).map((o) => {
+            const mood = like.includes(o.code)
+              ? ' like'
+              : dislike.includes(o.code)
+                ? ' dislike'
+                : ''
+            return el(
+              'div',
+              { class: 'theme' + mood },
+              el('span', { class: 'emo' }, o.emoji),
+              el('span', { class: 'name' }, o.label),
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'l',
+                  'aria-label': 'Нравится',
+                  onclick: () => set(o.code, 'l'),
+                },
+                '👍',
+              ),
+              el(
+                'button',
+                {
+                  type: 'button',
+                  class: 'd',
+                  'aria-label': 'Не нравится',
+                  onclick: () => set(o.code, 'd'),
+                },
+                '👎',
+              ),
+            )
+          }),
+        )
+      }
+
+      function renderIdeas() {
+        return IDEAS.map((idea) => {
+          const key = 'idea_' + idea.id
+          const value = state.answers[key]
+          return el(
+            'section',
+            { class: 'q', 'data-q': key },
+            el(
+              'div',
+              { class: 'idea' },
+              el('span', { class: 'big' }, idea.emoji),
+              el(
+                'div',
+                {},
+                el('p', { class: 'q-title' }, idea.title),
+                el('p', { class: 'q-hint' }, idea.text),
+              ),
+            ),
+            el(
+              'div',
+              { class: 'scale' },
+              SCALE.map((s) =>
+                optionButton({ code: s.v, label: s.label, emoji: s.emoji }, value === s.v, () => {
+                  state.answers[key] = s.v
+                  update()
+                }),
+              ),
+            ),
+            el('div', { class: 'q-error', hidden: true }, 'Оцени эту идею'),
+          )
+        })
+      }
+
+      function renderText(q) {
+        const area = el('textarea', {
+          maxlength: 500,
+          placeholder: q.placeholder || '',
+          'data-focus': q.id,
+        })
+        area.value = state.answers[q.id] || ''
+        area.addEventListener('input', () => {
+          state.answers[q.id] = area.value
+          save()
+        })
+        return area
+      }
+
+      const RENDER = {
+        single: renderSingle,
+        multi: renderMulti,
+        games: renderGames,
+        themes: renderThemes,
+        text: renderText,
+      }
+
+      function renderQuestion(q) {
+        if (q.type === 'ideas') return renderIdeas()
+        return el(
+          'section',
+          { class: 'q', 'data-q': q.id },
+          el('p', { class: 'q-title' }, q.title),
+          q.hint ? el('p', { class: 'q-hint' }, q.hint) : null,
+          RENDER[q.type](q),
+          el('div', { class: 'q-error', hidden: true }, errorText(q)),
+        )
+      }
+
+      function errorText(q) {
+        if (q.type === 'themes') return 'Отметь хотя бы одну тему, которая нравится'
+        if (q.type === 'games') return 'Выбери игру или нажми кнопку ниже'
+        return 'Ответь на этот вопрос'
+      }
+
+      /* ---------- экраны ---------- */
+
+      const topBar = document.getElementById('top')
+      const nav = document.getElementById('nav')
+      const backBtn = document.getElementById('back')
+      const nextBtn = document.getElementById('next')
+
+      function update() {
+        save()
+        const scrollY = window.scrollY
+        render()
+        window.scrollTo(0, scrollY)
+      }
+
+      function render() {
+        const i = state.screen
+        if (i < 0) return renderIntro()
+        if (i >= SCREENS.length) return renderDone()
+
+        const screen = SCREENS[i]
+        topBar.hidden = false
+        nav.hidden = false
+        document.getElementById('bar').style.width = `${Math.round((i / SCREENS.length) * 100)}%`
+        document.getElementById('step').textContent = `Шаг ${i + 1} из ${SCREENS.length}`
+        backBtn.hidden = false
+        nextBtn.textContent = i === SCREENS.length - 1 ? 'Отправить' : 'Дальше'
+
+        app.replaceChildren(
+          ...[
+            el('h2', {}, `${screen.emoji} ${screen.title}`),
+            screen.lead ? el('p', { class: 'lead' }, screen.lead) : null,
+            ...screen.questions.filter(visible).flatMap((q) => renderQuestion(q)),
+          ].filter(Boolean),
+        )
+
+        if (state.focus) {
+          const input = app.querySelector(`[data-focus="${state.focus}"]`)
+          state.focus = null
+          if (input) input.focus({ preventScroll: true })
+        }
+      }
+
+      function renderIntro() {
+        topBar.hidden = true
+        nav.hidden = true
+        app.replaceChildren(
+          el(
+            'div',
+            { class: 'hero' },
+            el('div', { class: 'big' }, '🎮'),
+            el('h1', {}, 'Опрос про игры'),
+            el(
+              'p',
+              { class: 'lead' },
+              'Мы хотим сделать игру, в которую тебе будет интересно играть. Расскажи, во что ты играешь и что тебе нравится.',
+            ),
+            el(
+              'div',
+              { class: 'facts' },
+              el('div', {}, '🕵️ Анонимно: мы не спрашиваем имя и не знаем, кто что ответил'),
+              el('div', {}, '⏱️ Займёт около 8 минут, 10 коротких шагов'),
+              el('div', {}, '✅ Правильных ответов нет — отвечай, как есть'),
+            ),
+            el(
+              'button',
+              {
+                type: 'button',
+                class: 'btn primary',
+                style: 'width:100%',
+                onclick: () => {
+                  state.startedAt = Date.now()
+                  go(0)
+                },
+              },
+              'Начать',
+            ),
+          ),
+        )
+      }
+
+      function renderDone() {
+        topBar.hidden = true
+        nav.hidden = true
+        app.replaceChildren(
+          el(
+            'div',
+            { class: 'hero' },
+            el('div', { class: 'big' }, '🎉'),
+            el('h1', {}, 'Спасибо!'),
+            el(
+              'p',
+              { class: 'lead' },
+              'Ответы отправлены. Если за этим компьютером будет отвечать кто-то ещё, нажми кнопку ниже.',
+            ),
+            el(
+              'button',
+              {
+                type: 'button',
+                class: 'btn',
+                style: 'width:100%',
+                onclick: () => {
+                  state = freshState()
+                  update()
+                },
+              },
+              'Новая анкета',
+            ),
+          ),
+        )
+      }
+
+      function go(i) {
+        state.screen = i
+        save()
+        render()
+        window.scrollTo(0, 0)
+      }
+
+      function isAnswered(q) {
+        const a = state.answers
+        if (q.optional) return true
+        if (q.type === 'themes') return (a.themes_like || []).length > 0
+        if (q.type === 'text') return !!(a[q.id] || '').trim()
+        if (q.type === 'multi' || q.type === 'games')
+          return Array.isArray(a[q.id]) && a[q.id].length > 0
+        return a[q.id] != null && a[q.id] !== ''
+      }
+
+      function validate() {
+        const screen = SCREENS[state.screen]
+        let first = null
+        const mark = (key, ok) => {
+          const box = app.querySelector(`[data-q="${key}"]`)
+          if (!box) return
+          box.classList.toggle('invalid', !ok)
+          box.querySelector('.q-error').hidden = ok
+          if (!ok && !first) first = box
+        }
+        for (const q of screen.questions.filter(visible)) {
+          if (q.type === 'ideas') {
+            for (const idea of IDEAS)
+              mark('idea_' + idea.id, state.answers['idea_' + idea.id] != null)
+          } else {
+            mark(q.id, isAnswered(q))
+          }
+        }
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return !first
+      }
+
+      /** Только ответы на вопросы, которые ребёнок видел. */
+      function collectAnswers() {
+        const a = state.answers
+        const out = {}
+        const group = new URLSearchParams(location.search).get('g')
+        if (group) out.group = group.slice(0, 40)
+        for (const screen of SCREENS) {
+          for (const q of screen.questions) {
+            if (!visible(q)) continue
+            if (q.type === 'ideas') {
+              for (const idea of IDEAS)
+                if (a['idea_' + idea.id] != null) out['idea_' + idea.id] = a['idea_' + idea.id]
+            } else if (q.type === 'themes') {
+              out.themes_like = a.themes_like || []
+              out.themes_dislike = a.themes_dislike || []
+            } else if (q.type === 'text') {
+              const text = (a[q.id] || '').trim()
+              if (text) out[q.id] = text
+            } else if (a[q.id] != null) {
+              out[q.id] = a[q.id]
+            }
+          }
+        }
+        // Один жанр — он и любимый: отдельный вопрос в этом случае не задаётся.
+        if (Array.isArray(a.genres) && a.genres.length === 1) out.genre_fav = a.genres[0]
+        return out
+      }
+
+      async function submit() {
+        nextBtn.disabled = true
+        nextBtn.textContent = 'Отправляю…'
+        const body = {
+          version: VERSION,
+          durationSeconds: Math.min(86400, Math.round((Date.now() - state.startedAt) / 1000)),
+          answers: collectAnswers(),
+          website: document.getElementById('website').value,
+        }
+        try {
+          const res = await fetch(ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          go(SCREENS.length)
+        } catch (e) {
+          alert('Не получилось отправить ответы. Проверь интернет и нажми «Отправить» ещё раз.')
+        } finally {
+          nextBtn.disabled = false
+          if (state.screen === SCREENS.length - 1) nextBtn.textContent = 'Отправить'
+        }
+      }
+
+      backBtn.addEventListener('click', () => go(state.screen - 1))
+      nextBtn.addEventListener('click', () => {
+        if (!validate()) return
+        if (state.screen === SCREENS.length - 1) submit()
+        else go(state.screen + 1)
+      })
+
+      restore()
+      render()
+    </script>
+  </body>
+</html>
