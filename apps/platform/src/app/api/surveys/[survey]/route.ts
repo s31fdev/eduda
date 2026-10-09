@@ -1,6 +1,6 @@
 import { isOpenSurvey, SURVEYS } from '@/src/features/surveys/registry'
 import { SurveySubmissionSchema } from '@/src/features/surveys/schemas'
-import { prisma } from '@repo/db'
+import { appendSurveyRecord, surveyFile } from '@/src/features/surveys/storage.server'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -10,8 +10,9 @@ import { NextRequest, NextResponse } from 'next/server'
  * платформа), так что CORS не нужен. Роут публичный, как и сама анкета: ключа
  * нет, защищают рамки схемы, размер тела и ловушка для ботов.
  *
- * Анонимность здесь — не настройка, а отсутствие данных: ни IP, ни заголовков,
- * ни сессии роут не читает и не пишет.
+ * Ответы пишутся в файл (`storage.server.ts`), а не в базу. Анонимность здесь —
+ * не настройка, а отсутствие данных: ни IP, ни заголовков, ни сессии роут не
+ * читает и не пишет.
  */
 export const dynamic = 'force-dynamic'
 
@@ -54,9 +55,12 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ survey
     return NextResponse.json({ ok: true })
   }
 
-  await prisma.surveyResponse.create({
-    data: { survey, version, durationSeconds, answers },
-  })
+  const file = surveyFile(survey)
+  if (!file) {
+    console.error('surveys: SURVEY_RESULTS_DIR не задан — ответ не принят')
+    return NextResponse.json({ ok: false, error: 'Приём ответов не настроен' }, { status: 503 })
+  }
+  await appendSurveyRecord(file, { version, durationSeconds, answers })
 
   return NextResponse.json({ ok: true })
 }
