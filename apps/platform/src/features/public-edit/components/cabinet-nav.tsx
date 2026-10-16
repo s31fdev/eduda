@@ -15,9 +15,7 @@ import { CalendarCheck, ChevronDown, House, UserRound, Wallet } from 'lucide-rea
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { initials } from '../lib'
 import { useCabinetDataQuery, useSelectedChild } from '../queries'
-import { Initials } from './cabinet-ui'
 
 type Section = { seg: string; label: string; icon: LucideIcon }
 
@@ -169,9 +167,9 @@ export function CabinetHeader({ token }: { token: string }) {
  * а длительность задана явно, чтобы подпись перекрашивалась вместе с пилюлей.
  */
 const TRIGGER_CLASS =
-  'text-muted-foreground gap-2 font-semibold duration-(--duration-tab) ease-(--ease-tab) data-active:bg-transparent dark:data-active:border-transparent dark:data-active:bg-transparent'
+  'text-muted-foreground font-semibold duration-(--duration-tab) ease-(--ease-tab) data-active:bg-transparent dark:data-active:border-transparent dark:data-active:bg-transparent'
 
-/** Двое детей — вкладки с инициалами. */
+/** Двое детей — вкладки с именами. */
 function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
   const { children, studentId, setChild } = useSelectedChild(token)
 
@@ -195,14 +193,6 @@ function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
             value={child.id}
             className={cn(TRIGGER_CLASS, compact ? 'px-2.5 text-xs' : 'text-sm')}
           >
-            <Initials
-              text={initials(child.firstName, child.lastName)}
-              className={
-                child.id === studentId
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-foreground/10 text-foreground/70'
-              }
-            />
             {child.firstName}
           </TabsTrigger>
         ))}
@@ -226,13 +216,9 @@ function ChildMenu({ token, large }: { token: string; large?: boolean }) {
         aria-label="Выбрать ребёнка"
         className={cn(
           'hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl transition-colors',
-          large ? '-ml-1.5 h-11 pr-2.5 pl-1.5' : 'bg-card h-11 border pr-3 pl-2',
+          large ? '-ml-2 h-11 pr-2.5 pl-2' : 'bg-card h-11 border px-3',
         )}
       >
-        <Initials
-          text={initials(current.firstName, current.lastName)}
-          className={cn('bg-primary text-primary-foreground', large && 'size-8 text-xs')}
-        />
         <span
           className={cn(
             'truncate',
@@ -252,17 +238,8 @@ function ChildMenu({ token, large }: { token: string; large?: boolean }) {
             <DropdownMenuRadioItem
               key={child.id}
               value={child.id}
-              className="min-h-14 gap-3 rounded-xl px-2.5 py-2 pr-9"
+              className="min-h-14 rounded-xl px-3 py-2 pr-9"
             >
-              <Initials
-                text={initials(child.firstName, child.lastName)}
-                className={cn(
-                  'size-9 text-xs',
-                  child.id === studentId
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-foreground/10 text-foreground/70',
-                )}
-              />
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-base font-semibold">
                   {getFullName(child.firstName, child.lastName)}
