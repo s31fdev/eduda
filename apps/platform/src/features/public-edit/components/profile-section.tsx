@@ -177,8 +177,6 @@ function ChildProfile({ token, studentId }: { token: string; studentId: number }
         onOpenChange={setChildOpen}
       />
       <ParentDrawer
-        // Новый ключ на каждого родителя — поля формы берут значения заново.
-        key={parentForm?.mode === 'edit' ? parentForm.parent.id : 'new'}
         token={token}
         studentId={studentId}
         form={parentForm}
@@ -309,7 +307,15 @@ function ParentDrawer({
       pending={update.isPending || create.isPending}
       submitLabel={parent ? 'Сохранить' : 'Добавить'}
     >
-      <form id="parent-form" onSubmit={submit} className="flex flex-col gap-4">
+      {/* Ключ на форме, а не на шторке: новый ключ шторки смонтировал бы её сразу
+          открытой, и Base UI не было бы из чего анимировать появление. Форма же
+          с новым ключом заново берёт значения полей нужного родителя. */}
+      <form
+        key={parent?.id ?? 'new'}
+        id="parent-form"
+        onSubmit={submit}
+        className="flex flex-col gap-4"
+      >
         <Field label="Имя" name="firstName" defaultValue={parent?.firstName} required />
         <Field label="Фамилия" name="lastName" defaultValue={parent?.lastName ?? ''} />
         <Field
