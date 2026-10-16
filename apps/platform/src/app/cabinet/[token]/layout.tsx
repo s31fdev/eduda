@@ -1,4 +1,4 @@
-import { CabinetNav, CabinetTabBar } from '@/src/features/public-edit/components/cabinet-nav'
+import { CabinetHeader, CabinetTabBar } from '@/src/features/public-edit/components/cabinet-nav'
 import { TokenSchema } from '@/src/features/public-edit/schemas'
 import { prisma } from '@repo/db'
 import type { Metadata } from 'next'
@@ -32,10 +32,11 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
   }
 
   return (
-    <div className="min-h-svh">
-      <CabinetNav token={token.data} />
-      {/* pb-20 — под фиксированный таб-бар, его на десктопе нет. */}
-      <main className="mx-auto max-w-5xl px-4 pt-6 pb-20 md:pb-6">{children}</main>
+    // Фон страницы серый, карточки на нём белые; в тёмной теме наоборот темнее карточек.
+    <div className="bg-muted dark:bg-background min-h-svh">
+      <CabinetHeader token={token.data} />
+      {/* pb-28 — под фиксированный таб-бар, его на десктопе нет. */}
+      <main className="mx-auto max-w-280 px-4 pt-4 pb-28 md:px-6 md:pt-6 md:pb-10">{children}</main>
       <CabinetTabBar token={token.data} />
     </div>
   )

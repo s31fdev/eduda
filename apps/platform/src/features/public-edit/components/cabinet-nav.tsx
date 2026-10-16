@@ -1,30 +1,32 @@
 'use client'
 
 import { cn, getFullName } from '@/src/lib/utils'
-import { Logo } from '@repo/ui/components/logo'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@repo/ui/components/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@repo/ui/components/dropdown-menu'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { SwitchThemeButton } from '@repo/ui/components/switch-theme-button'
-import { CalendarCheck, Home, UserRound, Wallet } from 'lucide-react'
+import { CalendarCheck, ChevronDown, House, UserRound, Wallet } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { initials } from '../lib'
 import { useCabinetDataQuery, useSelectedChild } from '../queries'
+import { Initials } from './cabinet-ui'
 
-type Section = { seg: string; label: string; short?: string; icon: LucideIcon }
+type Section = { seg: string; label: string; icon: LucideIcon }
 
 // Четыре раздела влезают в нижний бар даже на самом узком телефоне, поэтому
-// логики переполнения (как в кабинете ученика) здесь нет.
+// логики переполнения (как в кабинете ученика) здесь нет. Адреса прежние —
+// ссылки на них уже ушли родителям.
 const SECTIONS: Section[] = [
-  { seg: '', label: 'Главная', icon: Home },
-  { seg: '/finances', label: 'Финансы', icon: Wallet },
-  { seg: '/attendance', label: 'Посещаемость', short: 'Занятия', icon: CalendarCheck },
+  { seg: '', label: 'Главная', icon: House },
+  { seg: '/attendance', label: 'Занятия', icon: CalendarCheck },
+  { seg: '/finances', label: 'Оплата', icon: Wallet },
   { seg: '/profile', label: 'Профиль', icon: UserRound },
 ]
 
@@ -35,13 +37,13 @@ const SECTIONS: Section[] = [
  */
 function useSectionLinks(token: string) {
   const pathname = usePathname()
-  const { children, setChild, studentId, childQuery: query } = useSelectedChild(token)
+  const { childQuery: query } = useSelectedChild(token)
 
   // Адрес кабинета снаружи — `parent.{домен}/{token}`, сегмент `/cabinet`
   // дописывает прокси. Ссылки поэтому пишутся без него, как и на страницах школы.
   const base = `/${token}`
 
-  const links = SECTIONS.map((section) => {
+  return SECTIONS.map((section) => {
     const path = `${base}${section.seg}`
     return {
       ...section,
@@ -49,95 +51,259 @@ function useSectionLinks(token: string) {
       active: path === base ? pathname === base : pathname.startsWith(path),
     }
   })
-
-  return { links, children, setChild, studentId, base, query }
 }
 
-export function CabinetNav({ token }: { token: string }) {
-  const { links, children, setChild, studentId, base, query } = useSectionLinks(token)
+/**
+ * Шапка кабинета. На телефоне — школа, заголовок раздела и выбор ребёнка (разделы
+ * живут в нижнем баре). С `md` — полоса с разделами сверху, заголовок под ней.
+ *
+ * Заголовок главной — имя ребёнка: она про него целиком. Выбор ребёнка зависит от
+ * числа детей: одному не нужен, двоих видно сразу (сегменты), трёх и больше —
+ * выпадающим списком, иначе сегменты сжимаются до нечитаемых.
+ */
+export function CabinetHeader({ token }: { token: string }) {
+  const links = useSectionLinks(token)
   const { data, isPending } = useCabinetDataQuery(token)
+  const { children, studentId } = useSelectedChild(token)
+
+  const section = links.find((link) => link.active)
+  const isHome = section?.seg === ''
+  const child = children.find((item) => item.id === studentId)
+  const many = children.length > 2
+  const school = data?.organizationName ?? ''
+
+  const title = isHome
+    ? child
+      ? getFullName(child.firstName, child.lastName)
+      : ''
+    : section?.label
 
   return (
-    <header className="bg-background/80 sticky top-0 z-20 border-b backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4">
-        <Link href={`${base}${query}`} aria-label="На главную">
-          <Logo className="text-primary size-6 shrink-0" />
-        </Link>
-
-        {isPending ? (
-          <Skeleton className="ml-2 hidden h-4 w-32 sm:block" />
-        ) : (
-          <span className="text-muted-foreground ml-2 hidden truncate text-sm sm:block">
-            {data?.organizationName}
-          </span>
-        )}
-
-        {/*
-          На телефоне разделы живут в нижнем баре — здесь остаётся переключатель
-          ребёнка и тема. Активный раздел — подчёркиванием по нижней границе.
-        */}
-        <nav aria-label="Разделы кабинета" className="ml-4 hidden items-center gap-4 md:flex">
-          {links.map((link) => (
-            <Link
-              key={link.seg}
-              href={link.href}
-              aria-current={link.active ? 'page' : undefined}
-              className={cn(
-                'relative inline-flex h-14 shrink-0 items-center text-sm font-medium transition-colors',
-                link.active
-                  ? 'text-foreground after:bg-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
+    <header>
+      <div className="bg-card hidden border-b md:block">
+        <div className="mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
+          <Link
+            href={links[0]!.href}
+            className="flex min-h-11 items-center gap-2.5 text-base font-semibold"
+          >
+            <span
+              aria-hidden
+              className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg font-bold"
             >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+              {school.charAt(0)}
+            </span>
+            {isPending ? <Skeleton className="h-4 w-32" /> : school}
+          </Link>
 
-        <div className="ml-auto flex items-center gap-2">
-          {children.length > 1 && studentId != null && (
-            <Select value={studentId} onValueChange={(value) => setChild(value as number)}>
-              <SelectTrigger size="sm" className="max-w-40" aria-label="Выбрать ребёнка">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {children.map((child) => (
-                  <SelectItem key={child.id} value={child.id}>
-                    {getFullName(child.firstName, child.lastName)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <SwitchThemeButton />
+          <nav aria-label="Разделы кабинета" className="flex flex-wrap gap-1">
+            {links.map((link) => (
+              <Link
+                key={link.seg}
+                href={link.href}
+                aria-current={link.active ? 'page' : undefined}
+                className={cn(
+                  'flex h-11 items-center rounded-xl px-3.5 text-sm transition-colors',
+                  link.active
+                    ? 'bg-primary/10 text-primary font-semibold'
+                    : 'text-muted-foreground hover:text-foreground font-medium',
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            {children.length === 2 && <ChildTabs token={token} compact />}
+            {many && <ChildMenu token={token} />}
+            <SwitchThemeButton />
+          </div>
         </div>
+      </div>
+
+      <div className="mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6 md:pt-8">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-muted-foreground text-sm font-medium md:hidden">
+              {isPending ? <Skeleton className="h-4 w-32" /> : school}
+            </span>
+            {isHome && many ? (
+              <>
+                <h1 className="md:hidden">
+                  <ChildMenu token={token} large />
+                </h1>
+                <h1 className="hidden text-3xl font-semibold tracking-tight md:block">{title}</h1>
+              </>
+            ) : title ? (
+              <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">
+                {title}
+              </h1>
+            ) : (
+              <Skeleton className="h-8 w-48" />
+            )}
+          </div>
+          <div className="md:hidden">
+            <SwitchThemeButton />
+          </div>
+        </div>
+
+        {children.length === 2 && (
+          <div className="md:hidden">
+            <ChildTabs token={token} />
+          </div>
+        )}
+        {many && !isHome && (
+          <div className="md:hidden">
+            <ChildMenu token={token} />
+          </div>
+        )}
       </div>
     </header>
   )
 }
 
+/** Двое детей — сегменты с инициалами. */
+function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
+  const { children, studentId, setChild } = useSelectedChild(token)
+
+  return (
+    <div
+      role="group"
+      aria-label="Ребёнок"
+      className={cn('bg-foreground/[0.06] flex gap-1 p-1', compact ? 'rounded-xl' : 'rounded-2xl')}
+    >
+      {children.map((child) => {
+        const on = child.id === studentId
+        return (
+          <button
+            key={child.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => setChild(child.id)}
+            className={cn(
+              'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl text-base whitespace-nowrap transition-colors',
+              compact ? 'h-9 px-3 text-sm' : 'h-11',
+              on
+                ? 'bg-card text-foreground font-semibold shadow-sm'
+                : 'text-muted-foreground hover:text-foreground font-medium',
+            )}
+          >
+            <Initials
+              text={initials(child.firstName, child.lastName)}
+              className={
+                on ? 'bg-primary text-primary-foreground' : 'bg-foreground/10 text-foreground/70'
+              }
+            />
+            {child.firstName}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Трое детей и больше — выпадающий список. `large` — триггер вместо заголовка
+ * главной: там он и есть имя ребёнка.
+ */
+function ChildMenu({ token, large }: { token: string; large?: boolean }) {
+  const { children, studentId, setChild } = useSelectedChild(token)
+  const current = children.find((child) => child.id === studentId)
+  if (!current) return null
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Выбрать ребёнка"
+        className={cn(
+          'hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl transition-colors',
+          large ? '-ml-1.5 h-11 pr-2.5 pl-1.5' : 'bg-card h-11 border pr-3 pl-2',
+        )}
+      >
+        <Initials
+          text={initials(current.firstName, current.lastName)}
+          className={cn('bg-primary text-primary-foreground', large && 'size-8 text-xs')}
+        />
+        <span
+          className={cn(
+            'truncate',
+            large ? 'text-xl font-semibold tracking-tight' : 'text-sm font-medium',
+          )}
+        >
+          {large ? getFullName(current.firstName, current.lastName) : current.firstName}
+        </span>
+        <ChevronDown className="text-muted-foreground size-5 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+        <DropdownMenuRadioGroup
+          value={studentId}
+          onValueChange={(value) => setChild(value as number)}
+        >
+          {children.map((child) => (
+            <DropdownMenuRadioItem
+              key={child.id}
+              value={child.id}
+              className="min-h-14 gap-3 rounded-xl px-2.5 py-2 pr-9"
+            >
+              <Initials
+                text={initials(child.firstName, child.lastName)}
+                className={cn(
+                  'size-9 text-xs',
+                  child.id === studentId
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-foreground/10 text-foreground/70',
+                )}
+              />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-base font-semibold">
+                  {getFullName(child.firstName, child.lastName)}
+                </span>
+                {child.groups.length > 0 && (
+                  <span className="text-muted-foreground truncate text-sm">
+                    {child.groups.join(' · ')}
+                  </span>
+                )}
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 /** Нижний таб-бар: основная навигация на телефоне (десктоп — ряд ссылок в шапке). */
 export function CabinetTabBar({ token }: { token: string }) {
-  const { links } = useSectionLinks(token)
+  const links = useSectionLinks(token)
 
   return (
     <nav
-      aria-label="Основные разделы"
-      className="bg-background/95 fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      aria-label="Разделы кабинета"
+      className="bg-card fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <div className="flex h-14">
+      <div className="flex px-2 pt-1.5 pb-2.5">
         {links.map((link) => (
           <Link
             key={link.seg}
             href={link.href}
             aria-current={link.active ? 'page' : undefined}
-            className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors',
-              link.active ? 'text-primary' : 'text-muted-foreground',
-            )}
+            className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs"
           >
-            <link.icon className="size-5" />
-            {link.short ?? link.label}
+            <span
+              className={cn(
+                'flex h-7.5 w-14 items-center justify-center rounded-full transition-colors',
+                link.active ? 'bg-primary/15 text-primary' : 'text-muted-foreground',
+              )}
+            >
+              <link.icon className="size-5" />
+            </span>
+            <span
+              className={
+                link.active ? 'text-foreground font-semibold' : 'text-muted-foreground font-medium'
+              }
+            >
+              {link.label}
+            </span>
           </Link>
         ))}
       </div>
