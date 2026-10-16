@@ -10,6 +10,7 @@ import {
 } from '@repo/ui/components/dropdown-menu'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { SwitchThemeButton } from '@repo/ui/components/switch-theme-button'
+import { Tabs, TabsIndicator, TabsList, TabsTrigger } from '@repo/ui/components/tabs'
 import { CalendarCheck, ChevronDown, House, UserRound, Wallet } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -162,43 +163,51 @@ export function CabinetHeader({ token }: { token: string }) {
   )
 }
 
-/** Двое детей — сегменты с инициалами. */
+/**
+ * Вкладки как на входе и над графиками (`components/chart-tabs.tsx`): фон
+ * активной рисует `TabsIndicator`, поэтому у триггера `data-active:bg-transparent`,
+ * а длительность задана явно, чтобы подпись перекрашивалась вместе с пилюлей.
+ */
+const TRIGGER_CLASS =
+  'text-muted-foreground gap-2 font-semibold duration-(--duration-tab) ease-(--ease-tab) data-active:bg-transparent dark:data-active:border-transparent dark:data-active:bg-transparent'
+
+/** Двое детей — вкладки с инициалами. */
 function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
   const { children, studentId, setChild } = useSelectedChild(token)
 
   return (
-    <div
-      role="group"
-      aria-label="Ребёнок"
-      className={cn('bg-foreground/[0.06] flex gap-1 p-1', compact ? 'rounded-xl' : 'rounded-2xl')}
-    >
-      {children.map((child) => {
-        const on = child.id === studentId
-        return (
-          <button
+    <Tabs value={studentId} onValueChange={(value) => setChild(value as number)}>
+      {/* Высота — вариантом группы, иначе базовый `group-data-horizontal/tabs:h-8`
+          окажется специфичнее. На телефоне 44px: во вкладку попадают пальцем.
+          Подложка темнее, чем `bg-muted/70` у остальных вкладок: фон кабинета сам
+          `bg-muted`, и на нём штатная подложка не видна. */}
+      <TabsList
+        aria-label="Ребёнок"
+        className={cn(
+          'bg-foreground/5 grid w-full grid-cols-2',
+          compact ? 'group-data-horizontal/tabs:h-9' : 'group-data-horizontal/tabs:h-11',
+        )}
+      >
+        <TabsIndicator className="bg-card" />
+        {children.map((child) => (
+          <TabsTrigger
             key={child.id}
-            type="button"
-            aria-pressed={on}
-            onClick={() => setChild(child.id)}
-            className={cn(
-              'flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl text-base whitespace-nowrap transition-colors',
-              compact ? 'h-9 px-3 text-sm' : 'h-11',
-              on
-                ? 'bg-card text-foreground font-semibold shadow-sm'
-                : 'text-muted-foreground hover:text-foreground font-medium',
-            )}
+            value={child.id}
+            className={cn(TRIGGER_CLASS, compact ? 'px-2.5 text-xs' : 'text-sm')}
           >
             <Initials
               text={initials(child.firstName, child.lastName)}
               className={
-                on ? 'bg-primary text-primary-foreground' : 'bg-foreground/10 text-foreground/70'
+                child.id === studentId
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-foreground/10 text-foreground/70'
               }
             />
             {child.firstName}
-          </button>
-        )
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
 
