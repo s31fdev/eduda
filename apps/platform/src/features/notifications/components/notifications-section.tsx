@@ -1,18 +1,9 @@
 'use client'
 
-import { maxBotUrl } from '@/src/lib/utils'
-import { Badge } from '@repo/ui/components/badge'
+import { cn, maxBotUrl } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-} from '@repo/ui/components/item'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { BellRing, ExternalLink } from 'lucide-react'
+import { Bell, ExternalLink } from 'lucide-react'
 import { useCabinetMessengersQuery, useDisconnectMessengerMutation } from '../queries'
 
 /**
@@ -25,7 +16,7 @@ export default function NotificationsSection({ token }: { token: string }) {
   const { data, isPending, isError } = useCabinetMessengersQuery(token)
   const disconnect = useDisconnectMessengerMutation()
 
-  if (isPending) return <Skeleton className="h-40 w-full rounded-xl" />
+  if (isPending) return <Skeleton className="h-44 w-full rounded-2xl" />
 
   // Школа выключила фичу (`null`) или раздел не загрузился — молча ничего не
   // показываем: это не то, ради чего родитель открыл кабинет.
@@ -36,72 +27,68 @@ export default function NotificationsSection({ token }: { token: string }) {
   // Бот не заведён — показывать нечего.
   if (!maxLink) return null
 
+  const connected = data.max
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <BellRing className="text-muted-foreground size-4" />
-        <h2 className="text-lg font-semibold tracking-tight">Напоминания о занятиях</h2>
+    <section
+      aria-labelledby="reminders-title"
+      className="bg-card flex flex-col gap-3.5 rounded-2xl border p-5"
+    >
+      <div className="flex items-center gap-3">
+        <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl">
+          <Bell className="size-5" />
+        </span>
+        <span className="flex flex-col gap-0.5">
+          <h2 id="reminders-title" className="text-base font-semibold">
+            Напоминания в MAX
+          </h2>
+          <span
+            className={cn(
+              'inline-flex items-center gap-1.5 text-sm font-medium',
+              connected ? 'text-success' : 'text-muted-foreground',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'size-2 rounded-full',
+                connected ? 'bg-success' : 'bg-muted-foreground/50',
+              )}
+            />
+            {connected ? 'Подключено' : 'Не подключено'}
+          </span>
+        </span>
       </div>
 
-      <ItemGroup className="gap-2">
-        <Channel
-          name="MAX"
-          connected={data.max}
-          href={data.hasPhone ? maxLink : null}
-          hint={
-            data.hasPhone
-              ? 'Откроется чат с ботом. Нажмите «Отправить номер» — по нему я найду вашего ребёнка.'
-              : 'В школе не записан ваш номер телефона — без него подключить MAX не получится. Укажите его выше или попросите администратора.'
-          }
-          onDisconnect={() => disconnect.mutate({ token })}
-          disabled={disconnect.isPending}
-        />
-      </ItemGroup>
-    </div>
-  )
-}
+      <p className="text-foreground/80 text-sm leading-relaxed">
+        {connected
+          ? 'Бот напомнит о занятии: когда и куда идти. Время рассылки выбирает школа.'
+          : data.hasPhone
+            ? 'Откроется чат с ботом. Нажмите «Отправить номер» — по нему бот найдёт вашего ребёнка.'
+            : 'В школе не записан ваш номер телефона — без него подключить MAX не получится. Укажите его ниже или попросите администратора.'}
+      </p>
 
-function Channel({
-  name,
-  connected,
-  href,
-  hint,
-  onDisconnect,
-  disabled,
-}: {
-  name: string
-  connected: boolean
-  href: string | null
-  hint: string
-  onDisconnect: () => void
-  disabled: boolean
-}) {
-  return (
-    <Item variant="outline">
-      <ItemContent>
-        <ItemTitle className="flex items-center gap-2">
-          {name}
-          {connected && <Badge variant="secondary">Подключено</Badge>}
-        </ItemTitle>
-        <ItemDescription>{hint}</ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        {connected ? (
-          <Button variant="outline" onClick={onDisconnect} disabled={disabled}>
-            Отключить
+      {connected ? (
+        <Button
+          variant="outline"
+          className="h-11 self-start rounded-xl px-4 text-sm"
+          onClick={() => disconnect.mutate({ token })}
+          disabled={disconnect.isPending}
+        >
+          Отключить напоминания
+        </Button>
+      ) : (
+        data.hasPhone && (
+          <Button
+            className="h-11 self-start rounded-xl px-4 text-sm"
+            nativeButton={false}
+            render={<a href={maxLink} target="_blank" rel="noopener noreferrer" />}
+          >
+            Подключить MAX
+            <ExternalLink />
           </Button>
-        ) : (
-          href && (
-            <Button
-              nativeButton={false}
-              render={<a href={href} target="_blank" rel="noopener noreferrer" />}
-            >
-              Подключить
-              <ExternalLink />
-            </Button>
-          )
-        )}
-      </ItemActions>
-    </Item>
+        )
+      )}
+    </section>
   )
 }
