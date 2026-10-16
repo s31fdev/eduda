@@ -1,34 +1,46 @@
 'use client'
 
-import { formatDate, formatDateOnly } from '@/src/lib/timezone'
-import { getFullName, getGroupName } from '@/src/lib/utils'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@repo/ui/components/alert'
+import { formatDate } from '@/src/lib/timezone'
+import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@repo/ui/components/item'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { StatCard } from '@repo/ui/components/stat-card'
-import { CalendarCheck, Clock, MapPin, TriangleAlert, Wallet } from 'lucide-react'
+import { Bell, BookOpen, Check, ChevronRight, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
-import { attendanceStats, financeTotals, LOW_BALANCE, upcomingLessons } from '../lib'
 import {
-  usePublicStudentDataQuery,
+  absenceDeadline,
+  attendanceOf,
+  type CabinetLesson,
+  cabinetLessons,
+  forecastPaid,
+  groupSummaries,
+  parentAbsenceBlocker,
+  splitByToday,
+  timeRange,
+  weekday,
+  whenLabel,
+} from '../lib'
+import {
   usePublicStudentFinancesQuery,
   usePublicStudentGroupsQuery,
   useSelectedChild,
 } from '../queries'
+import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
+import { BalanceCard } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
+import { LessonLine, ListCard, PrivacyNote, SectionTitle } from './cabinet-ui'
 
 export default function CabinetHome({ token }: { token: string }) {
   const {
     studentId,
+    children,
     childQuery,
     isPending: childPending,
     isError: childError,
   } = useSelectedChild(token)
 
-  const student = usePublicStudentDataQuery(token, studentId)
   const finances = usePublicStudentFinancesQuery(token, studentId)
   const groups = usePublicStudentGroupsQuery(token, studentId)
+  const drawer = useAbsenceDrawer()
 
   if (childError) {
     return (
@@ -45,18 +57,11 @@ export default function CabinetHome({ token }: { token: string }) {
     return <NoChildren />
   }
 
-  if (childPending || student.isPending || finances.isPending || groups.isPending) {
+  if (childPending || finances.isPending || groups.isPending) {
     return <HomeSkeleton />
   }
 
-  if (
-    student.isError ||
-    finances.isError ||
-    groups.isError ||
-    !student.data ||
-    !finances.data ||
-    !groups.data
-  ) {
+  if (finances.isError || groups.isError || !finances.data || !groups.data) {
     return (
       <CabinetEmpty
         title="Не удалось загрузить данные"
@@ -65,128 +70,269 @@ export default function CabinetHome({ token }: { token: string }) {
     )
   }
 
-  const { balance } = financeTotals(finances.data)
-  const unpaidCount = finances.data?.unpaid.length ?? 0
-  const { present, marked, rate } = attendanceStats(groups.data.groups)
   // «Сегодня» считает сервер в поясе школы и отдаёт вместе с занятиями — так
   // ближайшие занятия и проверки в кабинете смотрят на одну и ту же дату.
-  const upcoming = upcomingLessons(groups.data.groups, groups.data.today)
-  const next = upcoming[0]
+  const { today, canMarkAbsence } = groups.data
+  const lessons = cabinetLessons(groups.data.groups)
+  const { ahead, past } = splitByToday(lessons, today)
+  const next = ahead.find((lesson) => lesson.state !== 'cancelled')
+  const later = ahead.filter((lesson) => lesson !== next).slice(0, 3)
+  const { unpaid } = forecastPaid(
+    ahead,
+    finances.data.wallets.filter((wallet) => wallet.status === 'ACTIVE'),
+  )
+  const child = children.find((item) => item.id === studentId)!
+  const base = `/${token}`
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {getFullName(student.data.firstName, student.data.lastName)}
-        </h1>
-        <p className="text-muted-foreground text-sm">Личный кабинет родителя</p>
-      </div>
+    // Лишняя высота сетки уходит строке «Дальше по расписанию», иначе высокая
+    // правая колонка растянула бы карточку следующего занятия.
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:grid-rows-[auto_auto_1fr_auto] md:gap-6">
+      {/* На десктопе под именем — чем ребёнок занят; на телефоне это есть в карточках. */}
+      <p className="text-muted-foreground -mt-2 hidden text-base md:col-span-2 md:block">
+        {groupSummaries(groups.data.groups, today)
+          .filter((g) => g.active)
+          .map((g) => [g.course, g.schedule, g.teacher].filter(Boolean).join(' · '))
+          .join('; ')}
+      </p>
 
-      {balance <= LOW_BALANCE && (
-        <Alert variant="destructive">
-          <TriangleAlert />
-          <AlertTitle>Заканчиваются оплаченные занятия</AlertTitle>
-          <AlertDescription>
-            {balance > 0
-              ? `Осталось ${balance} ${plural(balance, 'занятие', 'занятия', 'занятий')}. Пора продлить оплату.`
-              : 'Оплаченные занятия закончились. Свяжитесь со школой, чтобы продлить обучение.'}
-            {unpaidCount > 0 &&
-              ` Уже прошло ${unpaidCount} ${plural(unpaidCount, 'занятие', 'занятия', 'занятий')} без оплаты — следующая оплата их закроет.`}
-          </AlertDescription>
-          <AlertAction>
-            <Button
-              variant="ghost"
-              nativeButton={false}
-              render={<Link href={`/${token}/finances${childQuery}`} />}
-            >
-              Финансы
-            </Button>
-          </AlertAction>
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard label="Остаток занятий" value={balance} icon={Wallet} />
-        <StatCard
-          label="Посещаемость"
-          value={rate == null ? '—' : `${rate}%`}
-          description={rate == null ? 'Занятий пока не отмечали' : `${present} из ${marked}`}
-          icon={CalendarCheck}
-          hint="Считается только по отмеченным занятиям."
-        />
-        <StatCard
-          label="Следующее занятие"
-          value={next ? formatDate(next.date) : '—'}
-          description={
-            next
-              ? [next.time, getGroupName(next.group)].filter(Boolean).join(' · ')
-              : 'Занятий не запланировано'
-          }
-          icon={Clock}
-          className="col-span-2 sm:col-span-1"
-        />
-      </div>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium">Ближайшие занятия</h2>
-        {upcoming.length === 0 ? (
+      <div className="md:col-start-1 md:row-start-2">
+        {next ? (
+          <NextLessonCard
+            lesson={next}
+            today={today}
+            canMarkAbsence={canMarkAbsence}
+            onAbsence={() => drawer.openFor(next.lessonId)}
+          />
+        ) : (
           <CabinetEmpty
             title="Ближайших занятий нет"
             description="Как только школа поставит занятия в расписание, они появятся здесь."
           />
-        ) : (
-          <ItemGroup>
-            {upcoming.map((lesson) => (
-              <Item key={lesson.id} variant="muted">
-                <ItemContent>
-                  <ItemTitle>{getGroupName(lesson.group)}</ItemTitle>
-                  <ItemDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="tabular-nums">
-                      {formatDateOnly(lesson.date, {
-                        day: 'numeric',
-                        month: 'long',
-                        weekday: 'short',
-                      })}
-                      {lesson.time ? `, ${lesson.time}` : ''}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="size-3" />
-                      {lesson.group.location.name}
-                    </span>
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-            ))}
-          </ItemGroup>
         )}
-      </section>
+      </div>
 
-      <p className="text-muted-foreground text-xs">
-        Ссылка на кабинет уникальна и открывает данные ваших детей. Не пересылайте её посторонним.
-      </p>
+      <div className="flex flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-2 md:gap-6">
+        <BalanceCard
+          data={finances.data}
+          ahead={ahead}
+          today={today}
+          moreHref={`${base}/finances${childQuery}`}
+        />
+        <AttendanceCard past={past} href={`${base}/attendance${childQuery}`} />
+      </div>
+
+      {later.length > 0 && (
+        <section
+          aria-labelledby="later-title"
+          className="flex flex-col gap-2.5 md:col-start-1 md:row-start-3 md:self-start"
+        >
+          <div className="flex items-center justify-between">
+            <SectionTitle id="later-title">Дальше по расписанию</SectionTitle>
+            <Link
+              href={`${base}/attendance${childQuery}`}
+              className="text-primary flex min-h-8 items-center text-sm font-semibold"
+            >
+              Все занятия
+            </Link>
+          </div>
+          <ListCard>
+            {later.map((lesson) => {
+              const note = laterNote(lesson, unpaid.has(lesson.lessonId))
+              return (
+                <li key={lesson.lessonId} className="flex items-center gap-3.5 px-4 py-3">
+                  <LessonLine
+                    date={lesson.date}
+                    title={`${weekday(lesson.date)}, ${lesson.time}${lesson.makeupFor ? ' · отработка' : ''}`}
+                    sub={note.text}
+                    subClassName={note.className}
+                  />
+                </li>
+              )
+            })}
+          </ListCard>
+        </section>
+      )}
+
+      <div className="md:col-span-2 md:row-start-4">
+        <PrivacyNote many={children.length > 1} />
+      </div>
+
+      <AbsenceDrawer
+        {...drawer.props}
+        token={token}
+        studentId={studentId!}
+        childName={child.firstName}
+        lessons={lessons}
+        today={today}
+        canMarkAbsence={canMarkAbsence}
+      />
     </div>
+  )
+}
+
+/** Пометка в строке «Дальше по расписанию»: что с этим занятием не так, как обычно. */
+function laterNote(lesson: CabinetLesson, unpaid: boolean) {
+  if (lesson.state === 'cancelled') {
+    return { text: 'Занятие отменено школой', className: undefined }
+  }
+  if (lesson.state === 'warned') {
+    return {
+      text:
+        lesson.att.parentMarkedAt != null
+          ? 'Пропуск — вы предупредили школу'
+          : 'Пропуск — школа знает, что не придёт',
+      className: 'text-warning',
+    }
+  }
+  if (lesson.makeupFor) {
+    return {
+      text: `Взамен ${formatDate(lesson.makeupFor.date)}, ${lesson.group}`,
+      className: 'text-info',
+    }
+  }
+  if (unpaid) return { text: 'Ещё не оплачено', className: 'text-warning' }
+  return { text: `${lesson.course} · ${lesson.location}`, className: undefined }
+}
+
+function NextLessonCard({
+  lesson,
+  today,
+  canMarkAbsence,
+  onAbsence,
+}: {
+  lesson: CabinetLesson
+  today: string
+  canMarkAbsence: boolean
+  onAbsence: () => void
+}) {
+  const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, today, 'mark') === null
+  const warnedByParent = lesson.state === 'warned' && lesson.att.parentMarkedAt != null
+
+  // Подсказка под кнопкой: до какого момента можно предупредить, или почему нельзя.
+  let hint: string | null = null
+  if (canMark) hint = `Предупредить о пропуске можно ${absenceDeadline(lesson.date, today)}`
+  else if (lesson.state === 'warned') hint = 'Школа знает о пропуске — занятие не спишется'
+  else if (lesson.makeupFor)
+    hint = `Отработка за ${formatDate(lesson.makeupFor.date)} — спишется, даже если не прийти`
+  else if (canMarkAbsence && lesson.date === today)
+    hint = 'О пропуске сегодняшнего занятия предупредите школу напрямую'
+
+  return (
+    <section
+      aria-labelledby="next-title"
+      className="bg-primary text-primary-foreground flex flex-col gap-3.5 rounded-3xl p-5 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-6 md:p-7"
+    >
+      <div className="flex min-w-0 flex-col gap-3">
+        <span id="next-title" className="text-sm font-medium opacity-85">
+          {lesson.makeupFor ? 'Следующее занятие · отработка' : 'Следующее занятие'}
+        </span>
+        <span className="flex flex-col gap-1">
+          <span className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">
+            {whenLabel(lesson.date, today)}
+          </span>
+          <span className="text-lg font-medium tabular-nums md:text-xl">
+            {timeRange(lesson.time, lesson.duration)}
+          </span>
+        </span>
+        <span className="flex flex-col gap-1.5 text-sm opacity-85 md:flex-row md:flex-wrap md:gap-x-5">
+          <span className="flex items-center gap-2">
+            <BookOpen className="size-4 shrink-0" />
+            {[lesson.course, lesson.teachers.join(', ')].filter(Boolean).join(' · ')}
+          </span>
+          <span className="flex items-center gap-2">
+            <MapPin className="size-4 shrink-0" />
+            {lesson.location}
+          </span>
+        </span>
+      </div>
+
+      {(canMark || warnedByParent || hint) && (
+        <div className="flex flex-col gap-2 md:basis-60">
+          {(canMark || warnedByParent) && (
+            <Button
+              variant="secondary"
+              className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold"
+              onClick={onAbsence}
+            >
+              {canMark ? 'Не сможем прийти' : 'Изменить отметку'}
+            </Button>
+          )}
+          {hint && <span className="text-center text-xs opacity-85">{hint}</span>}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Полоска последних отмеченных занятий: видно и процент, и где именно пропуски. */
+const STRIP = {
+  present: { label: 'Посещено', icon: Check, className: 'bg-success' },
+  absent: { label: 'Пропуск', icon: X, className: 'bg-destructive' },
+  warned: { label: 'Предупредили о пропуске', icon: Bell, className: 'bg-warning' },
+} as const
+
+function AttendanceCard({ past, href }: { past: CabinetLesson[]; href: string }) {
+  const { marked } = attendanceOf(past)
+  const recent = marked.slice(0, 10).reverse()
+  const present = recent.filter((l) => l.state === 'present').length
+
+  return (
+    <Link href={href} className="bg-card flex flex-col gap-3 rounded-2xl border p-5">
+      <span className="flex items-center justify-between">
+        <span className="text-muted-foreground text-sm font-medium">Посещаемость</span>
+        <ChevronRight className="text-muted-foreground size-4.5" />
+      </span>
+      {recent.length === 0 ? (
+        <span className="text-muted-foreground text-sm">Занятия ещё не отмечали.</span>
+      ) : (
+        <>
+          <span className="flex items-baseline gap-2.5">
+            <span className="text-3xl leading-tight font-semibold tracking-tight">
+              {Math.round((present / recent.length) * 100)}%
+            </span>
+            <span className="text-muted-foreground text-sm">
+              {present} из {recent.length} последних
+            </span>
+          </span>
+          <span className="flex gap-1.5">
+            {recent.map((lesson) => {
+              const cell = STRIP[lesson.state as keyof typeof STRIP]
+              const label = `${cell.label}, ${formatDate(lesson.date)}`
+              return (
+                <span
+                  key={lesson.lessonId}
+                  role="img"
+                  aria-label={label}
+                  title={label}
+                  className={cn(
+                    'text-background flex h-8 flex-1 items-center justify-center rounded-lg',
+                    cell.className,
+                  )}
+                >
+                  <cell.icon className="size-4" strokeWidth={2.5} />
+                </span>
+              )
+            })}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {formatDate(recent[0]!.date)} — {formatDate(recent.at(-1)!.date)} · считаются только
+            отмеченные занятия
+          </span>
+        </>
+      )}
+    </Link>
   )
 }
 
 function HomeSkeleton() {
   return (
-    <div className="space-y-6">
-      <Skeleton className="h-8 w-56" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Skeleton className="h-20 rounded-lg" />
-        <Skeleton className="h-20 rounded-lg" />
-        <Skeleton className="col-span-2 h-20 rounded-lg sm:col-span-1" />
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-6">
+      <Skeleton className="h-64 rounded-3xl" />
+      <div className="flex flex-col gap-4 md:gap-6">
+        <Skeleton className="h-52 rounded-2xl" />
+        <Skeleton className="h-44 rounded-2xl" />
       </div>
-      <Skeleton className="h-48 w-full rounded-lg" />
     </div>
   )
-}
-
-/** Русская форма числительного: 1 занятие, 2 занятия, 5 занятий. */
-function plural(n: number, one: string, few: string, many: string) {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return one
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
-  return many
 }

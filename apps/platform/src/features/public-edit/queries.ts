@@ -150,6 +150,8 @@ export const useUpdatePublicStudentMutation = () => {
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.student(variables.token, variables.studentId),
       })
+      // Имя ребёнка стоит и в шапке кабинета, а она читает список детей.
+      queryClient.invalidateQueries({ queryKey: publicEditKeys.cabinet(variables.token) })
       toast.success('Данные ребёнка сохранены.')
     },
     onError: () => toast.error('Не удалось сохранить данные ребёнка. Попробуйте ещё раз.'),
@@ -209,12 +211,13 @@ export const useSetPublicAbsenceMutation = () => {
       if (serverError) throw serverError
       return data
     },
-    onSuccess: (_data, variables) => {
+    // Ждём перечитывания: шторка выводит свой шаг из данных, и без ожидания
+    // кнопка успела бы отпуститься раньше, чем шторка узнает о новой отметке.
+    // Тоста нет — результат и так на экране.
+    onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
-      })
-      toast.success(variables.absent ? 'Школа предупреждена о пропуске.' : 'Отметка снята.')
-    },
+      }),
     onError: (error) =>
       toast.error(absenceErrorText(error, 'Не удалось изменить отметку. Попробуйте ещё раз.')),
   })
@@ -230,16 +233,15 @@ export const useCreatePublicMakeupMutation = () => {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
-        queryKey: publicEditKeys.groups(variables.token, variables.studentId),
-      })
-      queryClient.invalidateQueries({
         queryKey: publicEditKeys.makeupOptions(
           variables.token,
           variables.studentId,
           variables.attendanceId,
         ),
       })
-      toast.success('Записали на отработку.')
+      return queryClient.invalidateQueries({
+        queryKey: publicEditKeys.groups(variables.token, variables.studentId),
+      })
     },
     onError: (error) =>
       toast.error(absenceErrorText(error, 'Не удалось записать на отработку. Попробуйте ещё раз.')),
@@ -254,12 +256,10 @@ export const useCancelPublicMakeupMutation = () => {
       if (serverError) throw serverError
       return data
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
-      })
-      toast.success('Запись на отработку отменена.')
-    },
+      }),
     onError: (error) =>
       toast.error(absenceErrorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
   })

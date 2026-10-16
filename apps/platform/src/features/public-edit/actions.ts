@@ -9,8 +9,8 @@ import { isFeatureDisabled } from '@/src/lib/features/registry'
 import { publicAction } from '@/src/lib/safe-action'
 import { touchStudentData } from '@/src/lib/student-data'
 import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
-import { getAgeFromBirthDate } from '@/src/lib/utils'
-import { parentAbsenceBlocker } from './lib'
+import { getAgeFromBirthDate, getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
+import { addDaysYmd, parentAbsenceBlocker } from './lib'
 import {
   CancelPublicMakeupSchema,
   CreatePublicMakeupSchema,
@@ -92,13 +92,6 @@ const blockableAttendanceSelect = {
   lesson: { select: { id: true, date: true, status: true } },
 } as const
 
-/** `YYYY-MM-DD` + n дней. Арифметика в UTC, поэтому переходов на летнее время нет. */
-function addDaysYmd(ymd: string, days: number): string {
-  const date = new Date(`${ymd}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
 /** Насколько вперёд родителю показываем занятия для отработки. */
 const MAKEUP_HORIZON_DAYS = 60
 
@@ -119,7 +112,18 @@ export const getCabinetData = publicAction
         organization: { select: { name: true } },
         students: {
           select: {
-            student: { select: { id: true, firstName: true, lastName: true } },
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                // Подпись ребёнка в выпадающем списке: чем он занят сейчас.
+                groups: {
+                  where: { status: 'ACTIVE' },
+                  select: { group: { select: GROUP_LABEL_SELECT } },
+                },
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -137,7 +141,12 @@ export const getCabinetData = publicAction
         phone: parent.phone,
         email: parent.email,
       },
-      children: parent.students.map(({ student }) => student),
+      children: parent.students.map(({ student }) => ({
+        id: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        groups: student.groups.map((sg) => getGroupName(sg.group)),
+      })),
     }
   })
 
@@ -339,6 +348,21 @@ export const getPublicStudentFinances = publicAction
             lessonsBalance: true,
             totalLessons: true,
             totalPayments: true,
+            // Оплаты родителю показываются пакетами: сумма, дата и сколько из
+            // них осталось. Отменённые не показываем — денег за ними нет.
+            packages: {
+              where: { status: { not: 'CANCELLED' } },
+              select: {
+                id: true,
+                lessonCount: true,
+                remaining: true,
+                price: true,
+                date: true,
+                status: true,
+                productName: true,
+              },
+              orderBy: [{ date: 'desc' }, { id: 'desc' }],
+            },
             studentGroups: {
               select: {
                 status: true,
@@ -378,6 +402,9 @@ export const getPublicStudentGroups = publicAction
       select: {
         status: true,
         statusChangedAt: true,
+        // Какой кошелёк платит уроки группы — по нему кабинет прикидывает,
+        // до какого числа хватит оплаченного.
+        walletId: true,
         group: {
           select: {
             id: true,
@@ -392,8 +419,10 @@ export const getPublicStudentGroups = publicAction
                 id: true,
                 date: true,
                 time: true,
+                duration: true,
                 // CANCELLED-уроки раньше рисовались как обычные неотмеченные.
                 status: true,
+                teachers: { select: { teacher: { select: { name: true } } } },
                 attendance: {
                   where: { studentId },
                   select: {
@@ -404,20 +433,26 @@ export const getPublicStudentGroups = publicAction
                     comment: true,
                     parentMarkedAt: true,
                     makeupForAttendanceId: true,
+                    walletId: true,
                     // Отработка стоит на уроке чужой группы и в выборку по
                     // studentGroup сама не попадает — только через эту ссылку.
                     makeupAttendance: {
                       select: {
                         id: true,
                         status: true,
+                        isWarned: true,
+                        comment: true,
                         parentMarkedAt: true,
                         makeupForAttendanceId: true,
+                        walletId: true,
                         lesson: {
                           select: {
                             id: true,
                             date: true,
                             time: true,
+                            duration: true,
                             status: true,
+                            teachers: { select: { teacher: { select: { name: true } } } },
                             group: {
                               select: {
                                 name: true,
