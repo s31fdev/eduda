@@ -1,5 +1,9 @@
 'use client'
 
+import { CalendarCheckIcon } from '@/src/components/animated-icons/calendar-check'
+import { HomeIcon } from '@/src/components/animated-icons/home'
+import { UserIcon } from '@/src/components/animated-icons/user'
+import { WalletIcon } from '@/src/components/animated-icons/wallet'
 import { cn, getFullName } from '@/src/lib/utils'
 import {
   DropdownMenu,
@@ -11,22 +15,29 @@ import {
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { SwitchThemeButton } from '@repo/ui/components/switch-theme-button'
 import { Tabs, TabsIndicator, TabsList, TabsTrigger } from '@repo/ui/components/tabs'
-import { CalendarCheck, ChevronDown, House, UserRound, Wallet } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useRef } from 'react'
 import { useCabinetDataQuery, useSelectedChild } from '../queries'
 
-type Section = { seg: string; label: string; icon: LucideIcon }
+/** Что умеют иконки lucide-animated: проиграть анимацию по команде. */
+type IconHandle = { startAnimation: () => void; stopAnimation: () => void }
+type AnimatedIcon = React.ForwardRefExoticComponent<
+  React.HTMLAttributes<HTMLDivElement> & { size?: number } & React.RefAttributes<IconHandle>
+>
+
+type Section = { seg: string; label: string; icon: AnimatedIcon }
 
 // Четыре раздела влезают в нижний бар даже на самом узком телефоне, поэтому
 // логики переполнения (как в кабинете ученика) здесь нет. Адреса прежние —
 // ссылки на них уже ушли родителям.
 const SECTIONS: Section[] = [
-  { seg: '', label: 'Главная', icon: House },
-  { seg: '/attendance', label: 'Занятия', icon: CalendarCheck },
-  { seg: '/finances', label: 'Оплата', icon: Wallet },
-  { seg: '/profile', label: 'Профиль', icon: UserRound },
+  { seg: '', label: 'Главная', icon: HomeIcon },
+  { seg: '/attendance', label: 'Занятия', icon: CalendarCheckIcon },
+  { seg: '/finances', label: 'Оплата', icon: WalletIcon },
+  { seg: '/profile', label: 'Профиль', icon: UserIcon },
 ]
 
 /**
@@ -83,14 +94,8 @@ export function CabinetHeader({ token }: { token: string }) {
         <div className="mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
           <Link
             href={links[0]!.href}
-            className="flex min-h-11 items-center gap-2.5 text-base font-semibold"
+            className="flex min-h-11 items-center text-base font-semibold"
           >
-            <span
-              aria-hidden
-              className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg font-bold"
-            >
-              {school.charAt(0)}
-            </span>
             {isPending ? <Skeleton className="h-4 w-32" /> : school}
           </Link>
 
@@ -101,12 +106,13 @@ export function CabinetHeader({ token }: { token: string }) {
                 href={link.href}
                 aria-current={link.active ? 'page' : undefined}
                 className={cn(
-                  'flex h-11 items-center rounded-xl px-3.5 text-sm transition-colors',
+                  'flex h-11 items-center gap-2 rounded-xl px-3.5 text-sm transition-colors',
                   link.active
                     ? 'bg-primary/10 text-primary font-semibold'
                     : 'text-muted-foreground hover:text-foreground font-medium',
                 )}
               >
+                <SectionIcon icon={link.icon} active={link.active} size={18} />
                 {link.label}
               </Link>
             ))}
@@ -186,7 +192,9 @@ function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
           compact ? 'group-data-horizontal/tabs:h-9' : 'group-data-horizontal/tabs:h-11',
         )}
       >
-        <TabsIndicator className="bg-card" />
+        {/* В тёмной теме карточка почти сливается с подложкой (0.205 против
+            0.19), поэтому пилюля там светлее: выбранного ребёнка видно и на телефоне. */}
+        <TabsIndicator className="bg-card dark:bg-foreground/15" />
         {children.map((child) => (
           <TabsTrigger
             key={child.id}
@@ -281,7 +289,7 @@ export function CabinetTabBar({ token }: { token: string }) {
                 link.active ? 'bg-primary/15 text-primary' : 'text-muted-foreground',
               )}
             >
-              <link.icon className="size-5" />
+              <SectionIcon icon={link.icon} active={link.active} size={20} />
             </span>
             <span
               className={
@@ -295,4 +303,30 @@ export function CabinetTabBar({ token }: { token: string }) {
       </div>
     </nav>
   )
+}
+
+/**
+ * Иконка раздела. Анимация играет, когда раздел становится текущим, — при
+ * переходе, а не при загрузке страницы и не на наведение: иконка подтверждает
+ * выбор. Кто просил систему не двигать интерфейс, видит статичную иконку.
+ */
+function SectionIcon({
+  icon: Icon,
+  active,
+  size,
+}: {
+  icon: AnimatedIcon
+  active: boolean
+  size: number
+}) {
+  const ref = useRef<IconHandle>(null)
+  const wasActive = useRef(active)
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (active && !wasActive.current && !reduceMotion) ref.current?.startAnimation()
+    wasActive.current = active
+  }, [active, reduceMotion])
+
+  return <Icon ref={ref} size={size} aria-hidden className="flex" />
 }
