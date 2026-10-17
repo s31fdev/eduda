@@ -417,6 +417,11 @@ export const getPublicStudentGroups = publicAction
             location: { select: { name: true } },
             schedules: { select: { dayOfWeek: true, time: true } },
             lessons: {
+              // Только уроки ребёнка: строки посещаемости заводятся на всё его
+              // расписание заранее, а уроки группы до записи и после ухода — чужие,
+              // кабинет их всё равно отбрасывает (`cabinetLessons`). Без отбора они
+              // шли бы в страницу вместе с преподавателями каждого урока.
+              where: { attendance: { some: { studentId } } },
               select: {
                 id: true,
                 date: true,
