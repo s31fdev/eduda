@@ -9,7 +9,9 @@ import {
   getPublicMakeupOptions,
   getPublicStudentData,
   getPublicStudentFinances,
+  getPublicPoll,
   getPublicStudentGroups,
+  savePublicPoll,
   setPublicAbsence,
   updatePublicParent,
   updatePublicStudent,
@@ -22,9 +24,11 @@ import type {
   UpdatePublicParentSchemaType,
   UpdatePublicStudentSchemaType,
 } from './schemas'
+import type { PollAnswer, SavePollAnswerSchemaType } from './poll'
 
 export const publicEditKeys = {
   cabinet: (token: string) => ['public-edit', token, 'cabinet'] as const,
+  poll: (token: string) => ['public-edit', token, 'poll'] as const,
   student: (token: string, studentId: number) =>
     ['public-edit', token, 'student', studentId] as const,
   finances: (token: string, studentId: number) =>
@@ -262,5 +266,43 @@ export const useCancelPublicMakeupMutation = () => {
       }),
     onError: (error) =>
       toast.error(absenceErrorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
+  })
+}
+
+// ─── Опрос родителей (временный, см. poll.ts) ───────────────────────
+
+export const usePublicPollQuery = (token: string) => {
+  return useQuery({
+    queryKey: publicEditKeys.poll(token),
+    queryFn: async () => {
+      const { data, serverError } = await getPublicPoll({ token })
+      if (serverError) throw serverError
+      return data ?? null
+    },
+  })
+}
+
+/** Сохраняет ответ целиком; экран меняется сразу, при ошибке откатывается. */
+export const useSavePublicPollMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    // Подряд идущие нажатия уходят по очереди: иначе ответы могли бы прийти
+    // на сервер не в том порядке, и в файле осталось бы не последнее.
+    scope: { id: 'parent-poll' },
+    mutationFn: async (values: SavePollAnswerSchemaType) => {
+      const { data, serverError } = await savePublicPoll(values)
+      if (serverError) throw serverError
+      return data
+    },
+    onMutate: ({ token, votes, signups }) => {
+      const key = publicEditKeys.poll(token)
+      const previous = queryClient.getQueryData<PollAnswer | null>(key)
+      queryClient.setQueryData<PollAnswer>(key, { votes, signups })
+      return { previous }
+    },
+    onError: (_error, { token }, context) => {
+      queryClient.setQueryData(publicEditKeys.poll(token), context?.previous)
+      toast.error('Не удалось сохранить. Попробуйте ещё раз.')
+    },
   })
 }

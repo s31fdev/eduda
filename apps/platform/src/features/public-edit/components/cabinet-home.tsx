@@ -28,6 +28,7 @@ import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { BalanceCard } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import { LessonLine, ListCard, PrivacyNote, SectionTitle } from './cabinet-ui'
+import { ParentPoll } from './parent-poll'
 
 export default function CabinetHome({ token }: { token: string }) {
   const {
@@ -87,7 +88,7 @@ export default function CabinetHome({ token }: { token: string }) {
   return (
     // Лишняя высота сетки уходит строке «Дальше по расписанию», иначе высокая
     // правая колонка растянула бы карточку следующего занятия.
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:grid-rows-[auto_auto_1fr_auto] md:gap-6">
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:grid-rows-[auto_auto_1fr_auto_auto] md:gap-6">
       {/* На десктопе под именем — чем ребёнок занят; на телефоне это есть в карточках. */}
       <p className="text-muted-foreground -mt-2 hidden text-base md:col-span-2 md:block">
         {groupSummaries(groups.data.groups, today)
@@ -110,6 +111,12 @@ export default function CabinetHome({ token }: { token: string }) {
             description="Как только школа поставит занятия в расписание, они появятся здесь."
           />
         )}
+      </div>
+
+      {/* Временный опрос: на телефоне сразу под ближайшим занятием, на десктопе —
+          во всю ширину под расписанием. */}
+      <div className="empty:hidden md:col-span-2 md:row-start-4">
+        <ParentPoll token={token} />
       </div>
 
       <div className="flex flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-2 md:gap-6">
@@ -154,7 +161,7 @@ export default function CabinetHome({ token }: { token: string }) {
         </section>
       )}
 
-      <div className="md:col-span-2 md:row-start-4">
+      <div className="md:col-span-2 md:row-start-5">
         <PrivacyNote many={children.length > 1} />
       </div>
 
