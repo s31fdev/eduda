@@ -98,7 +98,7 @@ export function CabinetHeader({ token }: { token: string }) {
   return (
     <header>
       <div className="bg-card hidden border-b md:block">
-        <div className="mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
+        <div className="cabinet-centered mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
           <Link
             href={links[0]!.href}
             className="flex min-h-11 items-center text-base font-semibold"
@@ -144,7 +144,7 @@ export function CabinetHeader({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6 md:pt-8">
+      <div className="cabinet-centered mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6 md:pt-8">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-muted-foreground text-sm font-medium md:hidden">
