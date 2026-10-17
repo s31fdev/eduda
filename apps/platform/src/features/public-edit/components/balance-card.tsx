@@ -4,10 +4,10 @@ import Link from 'next/link'
 import {
   type CabinetLesson,
   dayLabel,
-  financeTotals,
   forecastPaid,
   LOW_BALANCE,
   lessonsWord,
+  paidLessonsLeft,
 } from '../lib'
 import type { getPublicStudentFinances } from '../actions'
 
@@ -41,10 +41,11 @@ export function BalanceCard({
   /** Ссылка «Подробнее об оплате» — только на главной. */
   moreHref?: string
 }) {
-  const { balance } = financeTotals(data)
+  const balance = paidLessonsLeft(data)
   const unpaid = data.unpaid.length
-  const active = data.wallets.filter((wallet) => wallet.status === 'ACTIVE')
-  const { left, lastPaid } = forecastPaid(ahead, active)
+  // Все кошельки, а не только активные: урок списывается с кошелька своей группы,
+  // даже если школа его архивировала, и остаток такого кошелька тоже в счёте выше.
+  const { left, lastPaid } = forecastPaid(ahead, data.wallets)
 
   const debt = balance <= 0 && unpaid > 0
   const low = !debt && balance <= LOW_BALANCE
@@ -53,11 +54,16 @@ export function BalanceCard({
   // активных обычно больше одного. В счёт идут те, где есть остаток или будущие
   // занятия: пустой прошлогодний кошелёк родителю ничего не говорит.
   const spentBy = new Set(ahead.map((lesson) => lesson.walletId))
-  const relevant = active.filter((w) => w.lessonsBalance > 0 || spentBy.has(w.id))
+  const relevant = data.wallets.filter((w) => w.lessonsBalance > 0 || spentBy.has(w.id))
 
   // Точки — по пакету, который тратится сейчас: серые прошли, цветные остались.
-  // Имеет смысл, только когда кошелёк один, иначе «прошло» у каждого своё.
-  const single = relevant.length === 1 ? relevant[0]! : null
+  // Имеет смысл, только когда все оплаченные занятия лежат в одном кошельке:
+  // иначе «прошло» у каждого своё, а остаток старой системы в точки не ложится,
+  // и число над точками с ними не сошлось бы.
+  const single =
+    relevant.length === 1 && relevant[0]!.lessonsBalance === Math.max(balance, 0)
+      ? relevant[0]!
+      : null
   const head = single?.packages
     .filter((p) => p.status === 'ACTIVE' && p.remaining > 0 && p.lessonCount > 0)
     .at(-1)

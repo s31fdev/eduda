@@ -89,11 +89,10 @@ export function CabinetHeader({ token }: { token: string }) {
   const many = children.length > 2
   const school = data?.organizationName ?? ''
 
-  const title = isHome
-    ? child
-      ? getFullName(child.firstName, child.lastName)
-      : ''
-    : section?.label
+  // Без детей у главной нет имени — тогда заголовок, как у остальных разделов,
+  // её название, а не заглушка загрузки, которая никогда не сменится.
+  const title =
+    (isHome && child ? getFullName(child.firstName, child.lastName) : null) ?? section?.label
 
   return (
     <header>
@@ -157,7 +156,7 @@ export function CabinetHeader({ token }: { token: string }) {
                 </h1>
                 <h1 className="hidden text-3xl font-semibold tracking-tight md:block">{title}</h1>
               </>
-            ) : title ? (
+            ) : !isPending && title ? (
               // Ключ по тексту: заголовок проявляется вместе с содержимым раздела.
               <h1
                 key={title}

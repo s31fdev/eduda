@@ -7,7 +7,8 @@ import {
 } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { ChevronDown, Info } from 'lucide-react'
-import { cabinetLessons, dayLabel, lessonsWord, money, splitByToday, weekday } from '../lib'
+import { formatCurrency } from '@/src/lib/utils'
+import { cabinetLessons, dayLabel, lessonsWord, splitByToday, weekday } from '../lib'
 import {
   usePublicStudentFinancesQuery,
   usePublicStudentGroupsQuery,
@@ -99,7 +100,7 @@ export default function FinancesSection({ token }: { token: string }) {
           {paid > 0 && (
             <li className="bg-muted/50 flex items-center justify-between px-4 py-3.5">
               <span className="text-muted-foreground text-sm">Всего оплачено</span>
-              <span className="text-base font-semibold tabular-nums">{money(paid)}</span>
+              <span className="text-base font-semibold tabular-nums">{formatCurrency(paid)}</span>
             </li>
           )}
         </ListCard>
@@ -182,7 +183,9 @@ function PackageRow({
     <li className="flex flex-col gap-2.5 p-4">
       <span className="flex items-baseline justify-between gap-3">
         <span className="text-base font-semibold">{title}</span>
-        <span className="shrink-0 text-base font-semibold tabular-nums">{money(pkg.price)}</span>
+        <span className="shrink-0 text-base font-semibold tabular-nums">
+          {formatCurrency(pkg.price)}
+        </span>
       </span>
       <span className="text-muted-foreground -mt-1.5 text-sm">{sub}</span>
       {/* Пакет без занятий — деньги, перенесённые из старой системы: тратить в нём нечего. */}

@@ -212,19 +212,11 @@ export function groupSummaries(groups: GroupsData, today: string) {
 }
 
 /**
- * Реальные суммы = нераспределённый остаток (наследие старой системы) плюс
- * суммы по всем кошелькам.
+ * Сколько оплаченных занятий осталось: нераспределённый остаток (наследие старой
+ * системы) плюс остатки всех кошельков.
  */
-export function financeTotals(data: FinancesData) {
-  const sum = (key: 'lessonsBalance' | 'totalLessons' | 'totalPayments') =>
-    data[key] + data.wallets.reduce((acc, wallet) => acc + wallet[key], 0)
-
-  return {
-    balance: sum('lessonsBalance'),
-    lessons: sum('totalLessons'),
-    payments: sum('totalPayments'),
-  }
-}
+export const paidLessonsLeft = (data: FinancesData) =>
+  data.lessonsBalance + data.wallets.reduce((acc, wallet) => acc + wallet.lessonsBalance, 0)
 
 /** Порог, с которого родителю показываем предупреждение о низком балансе. */
 export const LOW_BALANCE = 2
@@ -241,8 +233,6 @@ export function plural(n: number, one: string, few: string, many: string) {
 }
 
 export const lessonsWord = (n: number) => plural(n, 'занятие', 'занятия', 'занятий')
-
-export const money = (value: number) => `${value.toLocaleString('ru-RU')} ₽`
 
 /** `YYYY-MM-DD` + n дней. Арифметика в UTC, поэтому переходов на летнее время нет. */
 export function addDaysYmd(ymd: string, days: number): string {
@@ -287,12 +277,19 @@ export function whenLabel(ymd: string, today: string) {
   return `${prefix}, ${formatDate(ymd)}`
 }
 
-/** «17:30 – 19:00». */
+/**
+ * «17:30 – 19:00». Часть уроков в базе хранит время уже диапазоном
+ * («16:00-17:00») — такое показываем как есть, только с тем же тире; время,
+ * которое не разобрать, тоже как есть, а не «NaN:NaN».
+ */
 export function timeRange(time: string, duration: number) {
-  const [h = 0, m = 0] = time.split(':').map(Number)
-  const end = h * 60 + m + duration
+  const [start = '', end] = time.split('-').map((part) => part.trim())
+  if (end) return `${start} – ${end}`
+  const [h, m] = start.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return time
+  const total = h! * 60 + m! + duration
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${time} – ${pad(Math.floor(end / 60) % 24)}:${pad(end % 60)}`
+  return `${start} – ${pad(Math.floor(total / 60) % 24)}:${pad(total % 60)}`
 }
 
 /**

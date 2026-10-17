@@ -77,11 +77,11 @@ export default function CabinetHome({ token }: { token: string }) {
   const lessons = cabinetLessons(groups.data.groups)
   const { ahead, past } = splitByToday(lessons, today)
   const next = ahead.find((lesson) => lesson.state !== 'cancelled')
-  const later = ahead.filter((lesson) => lesson !== next).slice(0, 3)
-  const { unpaid } = forecastPaid(
-    ahead,
-    finances.data.wallets.filter((wallet) => wallet.status === 'ACTIVE'),
-  )
+  // «Дальше» — только после следующего: отменённые уроки перед ним в список не
+  // попадают, иначе он начинался бы с даты раньше той, что на карточке выше.
+  const later = ahead.slice(next ? ahead.indexOf(next) + 1 : 0).slice(0, 3)
+  // Все кошельки, как в карточке баланса: архивный тоже платит уроки своей группы.
+  const { unpaid } = forecastPaid(ahead, finances.data.wallets)
   const child = children.find((item) => item.id === studentId)!
   const base = `/${token}`
 
