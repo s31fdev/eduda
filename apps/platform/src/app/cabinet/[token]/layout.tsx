@@ -12,7 +12,7 @@ import { getQueryClient } from '@/src/lib/query-client'
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import './view-transitions.css'
+import './cabinet.css'
 
 export const metadata: Metadata = { title: 'Личный кабинет' }
 
@@ -57,7 +57,7 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       {/* Фон страницы серый, карточки на нём белые; в тёмной теме наоборот темнее карточек. */}
-      {/* `data-cabinet` ограничивает правила переходов из view-transitions.css кабинетом. */}
+      {/* `data-cabinet` ограничивает правила из cabinet.css кабинетом. */}
       <div data-cabinet className="bg-muted dark:bg-background min-h-svh">
         <CabinetHeader token={token.data} />
         {/* pb-28 — под фиксированный таб-бар, его на десктопе нет. */}
