@@ -294,7 +294,7 @@ export function CabinetTabBar({ token }: { token: string }) {
   return (
     <nav
       aria-label="Разделы кабинета"
-      className="bg-card fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="cabinet-tabbar bg-card fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <MotionConfig reducedMotion="user">
         <div className="flex px-2 pt-1.5 pb-2.5">

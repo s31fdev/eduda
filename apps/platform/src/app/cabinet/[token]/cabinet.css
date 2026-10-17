@@ -66,6 +66,26 @@
   animation: none;
 }
 
+/*
+ * Нижний бар фиксирован поверх содержимого, но снимки раздела — отдельный слой
+ * перехода, и без своего имени бар оставался бы внизу, в `root`: карточки
+ * накрывали его, пока раздел гаснет и проявляется, а в конце он выскакивал
+ * обратно. Своё имя поднимает бар в слой над разделом (он и в странице рисуется
+ * позже), а без анимации он остаётся живым — пилюля едет, как без перехода.
+ */
+.cabinet-tabbar {
+  view-transition-name: cabinet-tabbar;
+}
+
+::view-transition-old(cabinet-tabbar) {
+  display: none;
+}
+
+::view-transition-new(cabinet-tabbar),
+::view-transition-group(cabinet-tabbar) {
+  animation: none;
+}
+
 /* Пока идёт переход, нажатия проходят на живую страницу, а не теряются. */
 :root:has([data-cabinet])::view-transition {
   pointer-events: none;
