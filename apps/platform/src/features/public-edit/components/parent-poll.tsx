@@ -2,8 +2,7 @@
 
 import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
-import { ButtonGroup, ButtonGroupText } from '@repo/ui/components/button-group'
-import { Check, Minus, Plus, Vote } from 'lucide-react'
+import { Check, Plus, X } from 'lucide-react'
 import { plural } from '../lib'
 import { PARENT_POLL } from '../poll'
 import { usePublicPollQuery, useSavePublicPollMutation } from '../queries'
@@ -32,86 +31,100 @@ export function ParentPoll({ token }: { token: string }) {
     })
 
   return (
-    <section
-      aria-labelledby="poll-title"
-      className="bg-card border-primary/30 flex flex-col gap-4 rounded-2xl border p-5"
-    >
-      <div className="flex items-start gap-3">
-        <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl">
-          <Vote className="size-5" />
-        </span>
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-primary text-sm font-medium">Станция «Выборы»</span>
-          <h2 id="poll-title" className="text-lg font-semibold tracking-tight">
+    <section aria-labelledby="poll-title" className="bg-card flex flex-col rounded-2xl border">
+      <div className="flex flex-col gap-5 p-5 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-end md:gap-10 md:p-7">
+        <div className="flex flex-col gap-2">
+          <span className="text-muted-foreground text-sm font-medium">Станция «Выборы»</span>
+          <h2
+            id="poll-title"
+            className="text-2xl leading-tight font-semibold tracking-tight text-balance"
+          >
             Что дальше — решаете вы
           </h2>
+          <p className="text-foreground/80 max-w-prose text-sm leading-relaxed">
+            Мы придумали пять встреч для родителей. Проведём те, которые выберете вы. У вас{' '}
+            {PARENT_POLL.votes} голоса — можно отдать и несколько за одну встречу. На любую встречу
+            можно сразу записаться.
+          </p>
         </div>
+        <Ballot used={votes.length} left={left} />
       </div>
 
-      <p className="text-foreground/80 text-sm leading-relaxed">
-        Мы придумали пять встреч для родителей. Проведём те, которые выберете вы. У вас{' '}
-        {PARENT_POLL.votes} голоса — распределите их, можно и несколько за одну встречу. На любую
-        встречу можно сразу записаться.
-      </p>
-
-      <p
-        className={cn('text-sm font-semibold', left > 0 ? 'text-primary' : 'text-success')}
-        aria-live="polite"
-      >
-        {left > 0
-          ? `Осталось голосов: ${left} из ${PARENT_POLL.votes}`
-          : 'Все голоса отданы, спасибо!'}
-      </p>
-
-      <ul className="divide-border/70 -mx-5 flex flex-col divide-y border-y">
+      <ul className="divide-border/70 flex flex-col divide-y border-t">
         {PARENT_POLL.options.map((option) => {
           const count = votes.filter((key) => key === option.key).length
           const signedUp = signups.includes(option.key)
           return (
-            <li key={option.key} className="flex flex-col gap-3 px-5 py-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">{option.eyebrow}</span>
-                <span className="flex items-baseline justify-between gap-3">
-                  <h3 className="text-base font-semibold">{option.title}</h3>
+            <li
+              key={option.key}
+              className={cn(
+                'flex flex-col gap-3.5 px-5 py-4 transition-colors md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-10 md:px-7 md:py-5',
+                count > 0 && 'bg-primary/5',
+              )}
+            >
+              {/* Сначала название, под ним факты: цена чипом в начале строки, чтобы
+                  цены пяти встреч читались одним столбиком, а не терялись справа. */}
+              <div className="flex max-w-prose flex-col gap-2">
+                <h3 className="text-lg leading-snug font-semibold">{option.title}</h3>
+                {/* Чип — строчный элемент, чтобы длинная строка формата обтекала его,
+                    а не уезжала целиком на следующую строку. */}
+                <p className="text-muted-foreground text-sm leading-6.5">
                   <span
                     className={cn(
-                      'shrink-0 text-sm font-semibold tabular-nums',
-                      option.price === 'Бесплатно' && 'text-success',
+                      'mr-2.5 inline-flex h-6.5 items-center rounded-full px-2.5 align-top text-xs font-semibold whitespace-nowrap tabular-nums',
+                      option.price === 'Бесплатно'
+                        ? 'bg-success/15 text-success'
+                        : 'bg-muted text-foreground',
                     )}
                   >
                     {option.price}
                   </span>
-                </span>
-                <p className="text-muted-foreground text-sm leading-snug">{option.description}</p>
+                  {/* Неразрывный пробел перед точкой: перенос не начинает строку с «·». */}
+                  {option.eyebrow.replaceAll(' · ', ' · ')}
+                </p>
+                <p className="text-foreground/80 text-sm leading-relaxed">{option.description}</p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <ButtonGroup aria-label={`Голоса за «${option.title}»`}>
-                  <Button
-                    variant="outline"
-                    className="h-11 w-11 rounded-l-xl"
-                    aria-label="Убрать голос"
-                    disabled={count === 0}
-                    onClick={() => removeVote(option.key)}
-                  >
-                    <Minus />
-                  </Button>
-                  <ButtonGroupText className="h-11 min-w-24 justify-center text-sm tabular-nums">
-                    {count} {plural(count, 'голос', 'голоса', 'голосов')}
-                  </ButtonGroupText>
-                  <Button
-                    variant="outline"
-                    className="h-11 w-11 rounded-r-xl"
-                    aria-label="Добавить голос"
-                    disabled={left === 0}
-                    onClick={() => addVote(option.key)}
-                  >
-                    <Plus />
-                  </Button>
-                </ButtonGroup>
+              <div className="flex items-center gap-2">
+                {/* Голоса — те же плашки, что в шапке: отданный голос переезжает сюда,
+                    нажатие на него забирает голос обратно. Ширина под три плашки,
+                    чтобы кнопки записи стояли ровно во всех строках. */}
+                <div
+                  role="group"
+                  aria-label={`За «${option.title}»: ${count} ${plural(count, 'голос', 'голоса', 'голосов')}`}
+                  className="flex w-36 shrink-0 gap-1.5 md:justify-end"
+                >
+                  {Array.from({ length: count }, (_, i) => (
+                    <Button
+                      key={i}
+                      className="size-11 rounded-xl"
+                      aria-label="Забрать голос"
+                      onClick={() => removeVote(option.key)}
+                    >
+                      <Check className="size-5 group-hover/button:hidden" strokeWidth={2.5} />
+                      <X className="hidden size-5 group-hover/button:block" strokeWidth={2.5} />
+                    </Button>
+                  ))}
+                  {(left > 0 || count === 0) && (
+                    <Button
+                      variant="outline"
+                      className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary size-11 rounded-xl border-2 border-dashed"
+                      aria-label="Отдать голос"
+                      disabled={left === 0}
+                      onClick={() => addVote(option.key)}
+                    >
+                      <Plus className="size-5" strokeWidth={2.5} />
+                    </Button>
+                  )}
+                </div>
                 <Button
-                  variant={signedUp ? 'secondary' : 'default'}
-                  className="ml-auto h-11 rounded-xl px-4 text-sm"
+                  variant="outline"
+                  className={cn(
+                    'h-11 flex-1 rounded-xl px-4 text-sm font-semibold md:w-40 md:flex-none',
+                    signedUp
+                      ? 'bg-success/15 text-success hover:bg-success/25 hover:text-success border-transparent'
+                      : 'text-primary hover:text-primary',
+                  )}
                   aria-pressed={signedUp}
                   onClick={() => toggleSignup(option.key)}
                 >
@@ -124,9 +137,44 @@ export function ParentPoll({ token }: { token: string }) {
         })}
       </ul>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground border-t px-5 py-4 text-xs leading-relaxed md:px-7">
         Запускаем встречу, когда наберётся группа. Итоги голосования объявим в конце дня.
       </p>
     </section>
+  )
+}
+
+/** Три голоса плашками — как полоска посещаемости: отданные закрашены. */
+function Ballot({ used, left }: { used: number; left: number }) {
+  const done = left === 0
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-muted-foreground font-medium">Ваши голоса</span>
+        <span
+          className={cn('font-semibold', done ? 'text-success' : 'text-primary')}
+          aria-live="polite"
+        >
+          {done ? 'Все отданы, спасибо!' : `Осталось ${left} из ${PARENT_POLL.votes}`}
+        </span>
+      </span>
+      <span aria-hidden className="flex gap-1.5">
+        {Array.from({ length: PARENT_POLL.votes }, (_, i) => (
+          <span
+            key={i}
+            className={cn(
+              'text-background flex h-8 flex-1 items-center justify-center rounded-lg transition-colors',
+              i >= used
+                ? 'border-primary/30 border-2 border-dashed'
+                : done
+                  ? 'bg-success'
+                  : 'bg-primary',
+            )}
+          >
+            {i < used && <Check className="size-4" strokeWidth={2.5} />}
+          </span>
+        ))}
+      </span>
+    </div>
   )
 }
