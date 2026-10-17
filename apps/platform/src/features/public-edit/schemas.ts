@@ -30,10 +30,16 @@ const BirthDateSchema = z
     return value
   })
 
+// Считаются цифры, а не знаки: в «+7 (912) 345-67-89» 11 цифр, но 17 знаков, и
+// прежний предел в 15 знаков отклонял самую обычную запись номера.
 const PhoneSchema = NullableTextSchema.pipe(
   z
     .string()
-    .regex(/^\+?[0-9\s\-()]{7,15}$/)
+    .regex(/^\+?[0-9\s\-()]+$/)
+    .refine((value) => {
+      const digits = value.replace(/\D/g, '').length
+      return digits >= 7 && digits <= 15
+    })
     .nullable(),
 )
 

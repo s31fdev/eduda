@@ -242,8 +242,16 @@ function ChildDrawer({
       pending={update.isPending}
     >
       <form id="child-form" onSubmit={submit} className="flex flex-col gap-4">
-        <Field label="Имя" name="firstName" defaultValue={data.firstName} required />
-        <Field label="Фамилия" name="lastName" defaultValue={data.lastName} required />
+        {/* `minLength` — как в схеме экшена: короткое имя браузер остановит сам,
+            а не сервер после отправки. */}
+        <Field label="Имя" name="firstName" defaultValue={data.firstName} required minLength={2} />
+        <Field
+          label="Фамилия"
+          name="lastName"
+          defaultValue={data.lastName}
+          required
+          minLength={2}
+        />
         <Field
           label="Дата рождения"
           name="birthDate"
@@ -316,8 +324,21 @@ function ParentDrawer({
         onSubmit={submit}
         className="flex flex-col gap-4"
       >
-        <Field label="Имя" name="firstName" defaultValue={parent?.firstName} required />
-        <Field label="Фамилия" name="lastName" defaultValue={parent?.lastName ?? ''} />
+        <Field
+          label="Имя"
+          name="firstName"
+          defaultValue={parent?.firstName}
+          required
+          minLength={2}
+        />
+        {/* Фамилия необязательна, но если указана — от двух букв (пустое поле
+            `minLength` не проверяет). */}
+        <Field
+          label="Фамилия"
+          name="lastName"
+          defaultValue={parent?.lastName ?? ''}
+          minLength={2}
+        />
         <Field
           label="Телефон"
           name="phone"

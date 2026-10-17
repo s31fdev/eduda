@@ -16,6 +16,8 @@ import {
 export const publicEditKeys = {
   cabinet: (token: string) => ['public-edit', token, 'cabinet'] as const,
   poll: (token: string) => ['public-edit', token, 'poll'] as const,
+  /** Профили всех детей разом — для правок, которые видны у каждого (общий родитель). */
+  students: (token: string) => ['public-edit', token, 'student'] as const,
   student: (token: string, studentId: number) =>
     ['public-edit', token, 'student', studentId] as const,
   finances: (token: string, studentId: number) =>
@@ -26,10 +28,17 @@ export const publicEditKeys = {
     ['public-edit', token, 'makeup-options', studentId, attendanceId] as const,
 }
 
-/** Ответ safe-action → данные или ошибка для TanStack Query. */
-async function unwrap<T>(result: Promise<{ data?: T; serverError?: unknown }>) {
-  const { data, serverError } = await result
+/**
+ * Ответ safe-action → данные или ошибка для TanStack Query. Ошибки проверки ввода
+ * safe-action не выбрасывает, а кладёт в `validationErrors` рядом с данными: без
+ * этой проверки отклонённая форма выглядела бы сохранённой.
+ */
+export async function unwrapAction<T>(
+  result: Promise<{ data?: T; serverError?: unknown; validationErrors?: unknown }>,
+) {
+  const { data, serverError, validationErrors } = await result
   if (serverError) throw serverError
+  if (validationErrors) throw new Error('Проверьте введённые данные.')
   return data ?? null
 }
 
@@ -43,34 +52,34 @@ const KEEP = { gcTime: Infinity } as const
 export const cabinetQuery = (token: string) =>
   queryOptions({
     queryKey: publicEditKeys.cabinet(token),
-    queryFn: () => unwrap(getCabinetData({ token })),
+    queryFn: () => unwrapAction(getCabinetData({ token })),
     ...KEEP,
   })
 
 export const pollQuery = (token: string) =>
   queryOptions({
     queryKey: publicEditKeys.poll(token),
-    queryFn: () => unwrap(getPublicPoll({ token })),
+    queryFn: () => unwrapAction(getPublicPoll({ token })),
     ...KEEP,
   })
 
 export const studentQuery = (token: string, studentId: number) =>
   queryOptions({
     queryKey: publicEditKeys.student(token, studentId),
-    queryFn: () => unwrap(getPublicStudentData({ token, studentId })),
+    queryFn: () => unwrapAction(getPublicStudentData({ token, studentId })),
     ...KEEP,
   })
 
 export const financesQuery = (token: string, studentId: number) =>
   queryOptions({
     queryKey: publicEditKeys.finances(token, studentId),
-    queryFn: () => unwrap(getPublicStudentFinances({ token, studentId })),
+    queryFn: () => unwrapAction(getPublicStudentFinances({ token, studentId })),
     ...KEEP,
   })
 
 export const groupsQuery = (token: string, studentId: number) =>
   queryOptions({
     queryKey: publicEditKeys.groups(token, studentId),
-    queryFn: () => unwrap(getPublicStudentGroups({ token, studentId })),
+    queryFn: () => unwrapAction(getPublicStudentGroups({ token, studentId })),
     ...KEEP,
   })

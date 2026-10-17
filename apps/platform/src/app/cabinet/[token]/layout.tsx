@@ -1,3 +1,4 @@
+import { cabinetMessengersQuery } from '@/src/features/notifications/queries'
 import { CabinetHeader, CabinetTabBar } from '@/src/features/public-edit/components/cabinet-nav'
 import { SectionTransition } from '@/src/features/public-edit/components/section-transition'
 import {
@@ -32,8 +33,11 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
   // Токен принадлежит родителю (Parent.accessToken). Гейт стоит в layout, а не
   // в страницах: он один на весь сегмент и не перевыполняется при переходах
   // между разделами.
+  // Ошибка запроса (база недоступна) не ловится: пусть отвечает страница ошибки.
+  // 404 — только когда родителя с таким токеном нет, иначе рабочую ссылку из
+  // переписки родитель принял бы за мёртвую.
   const queryClient = getQueryClient()
-  const cabinet = await queryClient.fetchQuery(cabinetQuery(token.data)).catch(() => null)
+  const cabinet = await queryClient.fetchQuery(cabinetQuery(token.data))
 
   if (!cabinet) {
     return notFound()
@@ -47,6 +51,7 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
   // так что это несколько запросов один раз на открытие ссылки.
   await Promise.all([
     queryClient.prefetchQuery(pollQuery(token.data)),
+    queryClient.prefetchQuery(cabinetMessengersQuery(token.data)),
     ...cabinet.children.flatMap((child) => [
       queryClient.prefetchQuery(groupsQuery(token.data, child.id)),
       queryClient.prefetchQuery(financesQuery(token.data, child.id)),

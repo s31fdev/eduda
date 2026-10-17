@@ -17,12 +17,21 @@ export async function readPollAnswers(): Promise<Map<number, PollLine>> {
   const answers = new Map<number, PollLine>()
   for (const line of text.split('\n')) {
     if (!line) continue
-    const entry = JSON.parse(line) as PollLine
-    answers.set(entry.parentId, entry)
+    // Строка, оборванная на середине записи (процесс упал во время дописывания),
+    // пропускается: иначе одна битая строка ломала бы опрос всем родителям.
+    try {
+      const entry = JSON.parse(line) as PollLine
+      answers.set(entry.parentId, entry)
+    } catch {
+      continue
+    }
   }
   return answers
 }
 
+// ponytail: каждое нажатие дописывает строку, файл растёт без предела и читается
+// целиком на каждое открытие кабинета школы. Опрос разовый, нажатий десятки на
+// родителя; если затянется — сжимать файл до последней строки родителя.
 export async function savePollAnswer(parentId: number, answer: PollAnswer) {
   const line: PollLine = { parentId, ...answer, at: new Date().toISOString() }
   await appendFile(POLL_FILE, JSON.stringify(line) + '\n')

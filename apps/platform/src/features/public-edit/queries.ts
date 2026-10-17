@@ -1,3 +1,4 @@
+import { notificationKeys } from '@/src/features/notifications/queries'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { parseAsInteger, useQueryState } from 'nuqs'
 import { startTransition } from 'react'
@@ -28,6 +29,7 @@ import {
   pollQuery,
   publicEditKeys,
   studentQuery,
+  unwrapAction,
 } from './query-options'
 
 export { publicEditKeys }
@@ -57,15 +59,10 @@ export const useMakeupOptionsQuery = (
 ) => {
   return useQuery({
     queryKey: publicEditKeys.makeupOptions(token, studentId ?? 0, attendanceId ?? 0),
-    queryFn: async () => {
-      const { data, serverError } = await getPublicMakeupOptions({
-        token,
-        studentId: studentId!,
-        attendanceId: attendanceId!,
-      })
-      if (serverError) throw serverError
-      return data ?? []
-    },
+    queryFn: async () =>
+      (await unwrapAction(
+        getPublicMakeupOptions({ token, studentId: studentId!, attendanceId: attendanceId! }),
+      )) ?? [],
     enabled: studentId != null && attendanceId != null,
   })
 }
@@ -104,14 +101,22 @@ export const useSelectedChild = (token: string) => {
 
 // ─── Mutations ──────────────────────────────────────────────────────
 
+/**
+ * Отказы от сервера здесь осмысленные («уже отмечено школой», «поздно», «проверьте
+ * данные») — показываем их родителю как есть, а общий текст держим на непойманное.
+ */
+const errorText = (error: unknown, fallback: string) =>
+  typeof error === 'string' && error
+    ? error
+    : error instanceof Error && error.message
+      ? error.message
+      : fallback
+
 export const useUpdatePublicStudentMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: UpdatePublicStudentSchemaType) => {
-      const { data, serverError } = await updatePublicStudent(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: UpdatePublicStudentSchemaType) =>
+      unwrapAction(updatePublicStudent(values)),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.student(variables.token, variables.studentId),
@@ -120,63 +125,49 @@ export const useUpdatePublicStudentMutation = () => {
       queryClient.invalidateQueries({ queryKey: publicEditKeys.cabinet(variables.token) })
       toast.success('Данные ребёнка сохранены.')
     },
-    onError: () => toast.error('Не удалось сохранить данные ребёнка. Попробуйте ещё раз.'),
+    onError: (error) =>
+      toast.error(errorText(error, 'Не удалось сохранить данные ребёнка. Попробуйте ещё раз.')),
   })
 }
 
 export const useUpdatePublicParentMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: UpdatePublicParentSchemaType) => {
-      const { data, serverError } = await updatePublicParent(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: UpdatePublicParentSchemaType) => unwrapAction(updatePublicParent(values)),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: publicEditKeys.student(variables.token, variables.studentId),
-      })
+      // Родитель общий у братьев и сестёр, а их профили лежат в кеше всю сессию:
+      // перечитываем профили всех детей, не только открытого.
+      queryClient.invalidateQueries({ queryKey: publicEditKeys.students(variables.token) })
+      // От телефона зависит, можно ли подключить MAX.
+      queryClient.invalidateQueries({ queryKey: notificationKeys.messengers(variables.token) })
       toast.success('Данные родителя сохранены.')
     },
-    onError: () => toast.error('Не удалось сохранить данные родителя. Попробуйте ещё раз.'),
+    onError: (error) =>
+      toast.error(errorText(error, 'Не удалось сохранить данные родителя. Попробуйте ещё раз.')),
   })
 }
 
 export const useCreatePublicParentMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: CreatePublicParentSchemaType) => {
-      const { data, serverError } = await createPublicParent(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: CreatePublicParentSchemaType) => unwrapAction(createPublicParent(values)),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.student(variables.token, variables.studentId),
       })
       toast.success('Родитель добавлен.')
     },
-    onError: () => toast.error('Не удалось добавить родителя. Попробуйте ещё раз.'),
+    onError: (error) =>
+      toast.error(errorText(error, 'Не удалось добавить родителя. Попробуйте ещё раз.')),
   })
 }
 
 // ─── Посещаемость: пропуски и отработки ─────────────────────────────
 
-/**
- * Отказы от сервера здесь осмысленные («уже отмечено школой», «поздно») —
- * показываем их родителю как есть, а generic-текст держим только на непойманное.
- */
-const absenceErrorText = (error: unknown, fallback: string) =>
-  typeof error === 'string' && error ? error : fallback
-
 export const useSetPublicAbsenceMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: SetPublicAbsenceSchemaType) => {
-      const { data, serverError } = await setPublicAbsence(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: SetPublicAbsenceSchemaType) => unwrapAction(setPublicAbsence(values)),
     // Ждём перечитывания: шторка выводит свой шаг из данных, и без ожидания
     // кнопка успела бы отпуститься раньше, чем шторка узнает о новой отметке.
     // Тоста нет — результат и так на экране.
@@ -185,18 +176,14 @@ export const useSetPublicAbsenceMutation = () => {
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
       }),
     onError: (error) =>
-      toast.error(absenceErrorText(error, 'Не удалось изменить отметку. Попробуйте ещё раз.')),
+      toast.error(errorText(error, 'Не удалось изменить отметку. Попробуйте ещё раз.')),
   })
 }
 
 export const useCreatePublicMakeupMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: CreatePublicMakeupSchemaType) => {
-      const { data, serverError } = await createPublicMakeup(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: CreatePublicMakeupSchemaType) => unwrapAction(createPublicMakeup(values)),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.makeupOptions(
@@ -210,24 +197,20 @@ export const useCreatePublicMakeupMutation = () => {
       })
     },
     onError: (error) =>
-      toast.error(absenceErrorText(error, 'Не удалось записать на отработку. Попробуйте ещё раз.')),
+      toast.error(errorText(error, 'Не удалось записать на отработку. Попробуйте ещё раз.')),
   })
 }
 
 export const useCancelPublicMakeupMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (values: CancelPublicMakeupSchemaType) => {
-      const { data, serverError } = await cancelPublicMakeup(values)
-      if (serverError) throw serverError
-      return data
-    },
+    mutationFn: (values: CancelPublicMakeupSchemaType) => unwrapAction(cancelPublicMakeup(values)),
     onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
       }),
     onError: (error) =>
-      toast.error(absenceErrorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
+      toast.error(errorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
   })
 }
 
@@ -242,13 +225,12 @@ export const useSavePublicPollMutation = () => {
     // Подряд идущие нажатия уходят по очереди: иначе ответы могли бы прийти
     // на сервер не в том порядке, и в файле осталось бы не последнее.
     scope: { id: 'parent-poll' },
-    mutationFn: async (values: SavePollAnswerSchemaType) => {
-      const { data, serverError } = await savePublicPoll(values)
-      if (serverError) throw serverError
-      return data
-    },
-    onMutate: ({ token, votes, signups }) => {
+    mutationFn: (values: SavePollAnswerSchemaType) => unwrapAction(savePublicPoll(values)),
+    onMutate: async ({ token, votes, signups }) => {
       const key = publicEditKeys.poll(token)
+      // Перечитывание опроса, начатое раньше (например, при возврате на вкладку),
+      // иначе легло бы поверх и стёрло только что отданный голос.
+      await queryClient.cancelQueries({ queryKey: key })
       const previous = queryClient.getQueryData<PollAnswer | null>(key)
       queryClient.setQueryData<PollAnswer>(key, { votes, signups })
       return { previous }

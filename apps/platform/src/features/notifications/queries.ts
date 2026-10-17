@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   connectSchoolMaxBot,
@@ -29,16 +35,24 @@ export const notificationKeys = {
   overview: ['notifications', 'overview'] as const,
 }
 
-export const useCabinetMessengersQuery = (token: string) => {
-  return useQuery({
+/**
+ * Подключение MAX в кабинете родителя. Описание запроса отдельно от хука: его
+ * же грузит заранее layout кабинета на сервере, иначе «Профиль» рисовал бы
+ * заглушку, а потом карточку другой высоты. В кеше держим весь визит, как и
+ * остальные данные кабинета.
+ */
+export const cabinetMessengersQuery = (token: string) =>
+  queryOptions({
     queryKey: notificationKeys.messengers(token),
     queryFn: async () => {
       const { data, serverError } = await getCabinetMessengers({ token })
       if (serverError) throw serverError
       return data ?? null
     },
+    gcTime: Infinity,
   })
-}
+
+export const useCabinetMessengersQuery = (token: string) => useQuery(cabinetMessengersQuery(token))
 
 export const useDisconnectMessengerMutation = () => {
   const queryClient = useQueryClient()
