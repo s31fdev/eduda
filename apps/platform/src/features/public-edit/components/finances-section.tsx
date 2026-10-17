@@ -1,10 +1,6 @@
 'use client'
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@repo/ui/components/collapsible'
+import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { ChevronDown, Info } from 'lucide-react'
 import { formatCurrency } from '@/src/lib/utils'
@@ -16,7 +12,7 @@ import {
 } from '../queries'
 import { BalanceCard, type CabinetWallet, walletLabel } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { LessonLine, ListCard, SectionTitle } from './cabinet-ui'
+import { CollapsiblePanel, LessonLine, ListCard, SectionTitle } from './cabinet-ui'
 
 export default function FinancesSection({ token }: { token: string }) {
   const { studentId, isPending: childPending } = useSelectedChild(token)
@@ -107,7 +103,7 @@ export default function FinancesSection({ token }: { token: string }) {
 
         {archivedPackages.length > 0 && (
           // Завершённые курсы свёрнуты: это история, а не то, за чем пришли.
-          <Collapsible className="flex flex-col gap-2.5">
+          <Collapsible className="flex flex-col">
             <CollapsibleTrigger className="group bg-card flex min-h-14 w-full cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 text-left">
               <span className="flex flex-col gap-0.5 py-2.5">
                 <span className="text-base font-semibold">Завершённые курсы</span>
@@ -117,13 +113,13 @@ export default function FinancesSection({ token }: { token: string }) {
               </span>
               <ChevronDown className="text-muted-foreground size-5 shrink-0 transition-transform group-data-panel-open:rotate-180" />
             </CollapsibleTrigger>
-            <CollapsibleContent>
+            <CollapsiblePanel>
               <ListCard>
                 {archivedPackages.map(({ pkg, wallet }) => (
                   <PackageRow key={pkg.id} pkg={pkg} wallet={wallet} today={today} />
                 ))}
               </ListCard>
-            </CollapsibleContent>
+            </CollapsiblePanel>
           </Collapsible>
         )}
       </section>

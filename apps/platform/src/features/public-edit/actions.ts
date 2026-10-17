@@ -10,7 +10,7 @@ import { publicAction } from '@/src/lib/safe-action'
 import { touchStudentData } from '@/src/lib/student-data'
 import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
 import { getAgeFromBirthDate, getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
-import { addDaysYmd, parentAbsenceBlocker } from './lib'
+import { addDaysYmd, parentAbsenceBlocker, schoolNow } from './lib'
 import { PARENT_POLL, SavePollAnswerSchema } from './poll'
 import { readPollAnswers, savePollAnswer } from './poll.server'
 import {
@@ -91,7 +91,7 @@ const blockableAttendanceSelect = {
   parentMarkedAt: true,
   makeupForAttendanceId: true,
   makeupAttendance: { select: { id: true, status: true, parentMarkedAt: true } },
-  lesson: { select: { id: true, date: true, status: true } },
+  lesson: { select: { id: true, date: true, time: true, status: true } },
 } as const
 
 /** Насколько вперёд родителю показываем занятия для отработки. */
@@ -483,10 +483,12 @@ export const getPublicStudentGroups = publicAction
       orderBy: { createdAt: 'asc' },
     })
 
-    // «Сегодня» считает сервер в поясе школы и отдаёт вместе с данными: клиент
+    // «Сейчас» считает сервер в поясе школы и отдаёт вместе с данными: клиент
     // сравнивает те же строки теми же правилами, что и проверки в actions.
+    const now = schoolNow(tz)
     return {
-      today: todayYmdInTz(tz),
+      today: now.date,
+      now,
       canMarkAbsence: !isFeatureDisabled(disabledFeatures, 'cabinet.absence'),
       groups,
     }
@@ -513,7 +515,7 @@ export const setPublicAbsence = publicAction
     const blocker = parentAbsenceBlocker(
       attendance,
       attendance.lesson,
-      todayYmdInTz(tz),
+      schoolNow(tz),
       parsedInput.absent ? 'mark' : 'unmark',
     )
     if (blocker) throw new ConflictError(blocker)
@@ -566,6 +568,7 @@ async function resolveMakeupSource(
         select: {
           id: true,
           date: true,
+          time: true,
           status: true,
           group: { select: { courseId: true, locationId: true } },
         },
@@ -574,7 +577,7 @@ async function resolveMakeupSource(
   })
   if (!source) throw new NotFoundError('Пропущенное занятие не найдено.')
 
-  const blocker = parentAbsenceBlocker(source, source.lesson, todayYmdInTz(tz), 'makeup')
+  const blocker = parentAbsenceBlocker(source, source.lesson, schoolNow(tz), 'makeup')
   if (blocker) throw new ConflictError(blocker)
 
   return source
@@ -730,7 +733,7 @@ export const cancelPublicMakeup = publicAction
     })
     if (!makeup) throw new NotFoundError('Отработка не найдена.')
 
-    const blocker = parentAbsenceBlocker(makeup, makeup.lesson, todayYmdInTz(tz), 'cancelMakeup')
+    const blocker = parentAbsenceBlocker(makeup, makeup.lesson, schoolNow(tz), 'cancelMakeup')
     if (blocker) throw new ConflictError(blocker)
 
     // Сам пропуск остаётся предупреждённым — родитель отказался от даты, а не от пропуска.

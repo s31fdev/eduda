@@ -1,4 +1,4 @@
-import { formatDate, formatDateOnly } from '@/src/lib/timezone'
+import { formatDate, formatDateOnly, formatInTz } from '@/src/lib/timezone'
 import { getGroupName } from '@/src/lib/utils'
 import type { getPublicStudentFinances, getPublicStudentGroups } from './actions'
 
@@ -243,6 +243,45 @@ export function addDaysYmd(ymd: string, days: number): string {
 
 const dayOfWeek = (ymd: string) => new Date(`${ymd}T00:00:00Z`).getUTCDay()
 
+// ─── Срок, до которого родитель решает сам ──────────────────────────
+
+/** Стеночасы школы: `date` — `YYYY-MM-DD`, `time` — `HH:mm`. */
+export type SchoolNow = { date: string; time: string }
+
+/**
+ * «Сейчас» в поясе школы. Считает сервер и отдаёт клиенту вместе с данными, чтобы
+ * кнопки и проверки в actions смотрели на одни и те же часы. Одним `Date`, иначе
+ * в полночь дата и время могли бы разойтись на сутки.
+ */
+export function schoolNow(tz: string): SchoolNow {
+  const at = new Date()
+  return { date: formatInTz(at, tz, 'yyyy-MM-dd'), time: formatInTz(at, tz, 'HH:mm') }
+}
+
+/** За сколько минут до начала родитель ещё может предупредить о пропуске или передумать. */
+export const ABSENCE_CUTOFF_MINUTES = 30
+
+/**
+ * Момент, после которого отметку меняет только школа: начало урока минус
+ * `ABSENCE_CUTOFF_MINUTES`. Время диапазоном («16:00-17:00») — по началу. `null`,
+ * если время не разобрать: тогда действует прежний срок «до конца дня накануне».
+ */
+function absenceCutoff(lesson: { date: string; time: string }): SchoolNow | null {
+  const match = /^(\d{1,2}):(\d{2})/.exec(lesson.time.trim())
+  if (!match) return null
+  // Стеночасы одной зоны считаем как UTC: так полночь переходится без поясов.
+  const minutes = Number(match[1]) * 60 + Number(match[2]) - ABSENCE_CUTOFF_MINUTES
+  const iso = new Date(Date.parse(`${lesson.date}T00:00:00Z`) + minutes * 60_000).toISOString()
+  return { date: iso.slice(0, 10), time: iso.slice(11, 16) }
+}
+
+/** Прошёл ли срок. `YYYY-MM-DD HH:mm` сравнивается строкой = по времени. */
+export function absenceCutoffPassed(lesson: { date: string; time: string }, now: SchoolNow) {
+  const cutoff = absenceCutoff(lesson)
+  if (!cutoff) return lesson.date <= now.date
+  return `${now.date} ${now.time}` > `${cutoff.date} ${cutoff.time}`
+}
+
 const WEEKDAY = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
 const WEEKDAY_ON = [
   'В воскресенье',
@@ -293,15 +332,23 @@ export function timeRange(time: string, duration: number) {
 }
 
 /**
- * До какого момента можно предупредить о пропуске (или снять отметку): до конца
- * дня накануне — то же правило, что в `parentAbsenceBlocker`.
+ * До какого момента можно снять отметку: «сегодня до 17:30», «завтра до 17:30»,
+ * «21 октября до 17:30» — тот же срок, что в `parentAbsenceBlocker`.
  */
-export function absenceDeadline(lessonDate: string, today: string, withDate = false) {
-  const eve = addDaysYmd(lessonDate, -1)
-  if (eve === today) return 'до конца сегодняшнего дня'
-  const near = eve <= addDaysYmd(today, 6)
-  if (near && !withDate) return `до конца ${WEEKDAY_OF[dayOfWeek(eve)]}`
-  return `до конца ${WEEKDAY_OF[dayOfWeek(eve)]}, ${formatDate(eve)}`
+export function absenceDeadline(lesson: { date: string; time: string }, today: string) {
+  const cutoff = absenceCutoff(lesson)
+  if (!cutoff) {
+    const eve = addDaysYmd(lesson.date, -1)
+    if (eve === today) return 'до конца сегодняшнего дня'
+    return `до конца ${WEEKDAY_OF[dayOfWeek(eve)]}, ${formatDate(eve)}`
+  }
+  const day =
+    cutoff.date === today
+      ? 'сегодня'
+      : cutoff.date === addDaysYmd(today, 1)
+        ? 'завтра'
+        : formatDate(cutoff.date)
+  return `${day} до ${cutoff.time}`
 }
 
 /** «18 мая», а не в текущем году — «18 мая 2027»: иначе прогноз на весну читается как прошлое. */
@@ -342,8 +389,10 @@ export type BlockableAttendance = {
 }
 
 export type BlockableLesson = {
-  /** `YYYY-MM-DD` — сравнивается строкой с `today`, оба в поясе школы. */
+  /** `YYYY-MM-DD` в поясе школы. */
   date: string
+  /** `HH:mm` или диапазон «16:00-17:00» — от начала считается срок. */
+  time: string
   status: string
 }
 
@@ -357,21 +406,21 @@ const STAFF_MARK = 'Эту отметку поставила школа. Изм�
  * (там это граница доступа), и попап в кабинете (там это видимость кнопок). Иначе
  * кнопка и проверка разъедутся, и родитель будет получать отказ на активной кнопке.
  *
- * `today` считает сервер в поясе организации и отдаёт клиенту вместе с данными —
- * так у обеих сторон буквально одно и то же «сегодня».
+ * `now` считает сервер в поясе организации (`schoolNow`) и отдаёт клиенту вместе
+ * с данными — так у обеих сторон одни и те же часы.
  */
 export function parentAbsenceBlocker(
   att: BlockableAttendance,
   lesson: BlockableLesson,
-  today: string,
+  now: SchoolNow,
   action: ParentAttendanceAction,
 ): string | null {
   if (lesson.status === 'CANCELLED') return 'Занятие отменено школой.'
 
-  // Дедлайн: только будущие дни. В день занятия отметка уже влияет на работу
-  // преподавателя, поэтому такие отмены идут через школу.
-  if (lesson.date <= today) {
-    return 'Отметить можно не позднее чем за день до занятия. Позже — свяжитесь со школой.'
+  // Срок — за полчаса до начала: позже преподаватель уже рассчитывает на
+  // ребёнка, поэтому такие отмены идут через школу.
+  if (absenceCutoffPassed(lesson, now)) {
+    return `Отметить можно не позднее чем за ${ABSENCE_CUTOFF_MINUTES} минут до начала занятия. Позже — свяжитесь со школой.`
   }
 
   const isMakeupRow = att.makeupForAttendanceId != null

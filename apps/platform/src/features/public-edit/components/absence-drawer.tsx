@@ -32,6 +32,7 @@ import {
   parentAbsenceBlocker,
   type ParentAttendanceAction,
   plural,
+  type SchoolNow,
   timeRange,
   weekday,
 } from '../lib'
@@ -68,7 +69,7 @@ type AbsenceDrawerProps = ReturnType<typeof useAbsenceDrawer>['props'] & {
   childName: string
   /** Свежий список занятий: шаг шторки выводится из данных, а не хранится. */
   lessons: CabinetLesson[]
-  today: string
+  now: SchoolNow
   canMarkAbsence: boolean
 }
 
@@ -85,7 +86,7 @@ export function AbsenceDrawer({
   studentId,
   childName,
   lessons,
-  today,
+  now,
   canMarkAbsence,
   lessonId,
   open,
@@ -122,7 +123,7 @@ export function AbsenceDrawer({
               studentId={studentId}
               childName={childName}
               lesson={lesson}
-              today={today}
+              now={now}
               canMarkAbsence={canMarkAbsence}
               onPick={() => setPicking(true)}
             />
@@ -132,7 +133,7 @@ export function AbsenceDrawer({
               studentId={studentId}
               childName={childName}
               lesson={lesson}
-              today={today}
+              now={now}
               canMarkAbsence={canMarkAbsence}
             />
           ))}
@@ -146,22 +147,22 @@ type StepProps = {
   studentId: number
   childName: string
   lesson: CabinetLesson
-  today: string
+  now: SchoolNow
   canMarkAbsence: boolean
 }
 
-function blocker(lesson: CabinetLesson, today: string, action: ParentAttendanceAction) {
-  return parentAbsenceBlocker(lesson.att, lesson, today, action)
+function blocker(lesson: CabinetLesson, now: SchoolNow, action: ParentAttendanceAction) {
+  return parentAbsenceBlocker(lesson.att, lesson, now, action)
 }
 
 const bigButton = 'h-12 w-full rounded-xl text-base font-semibold'
 
 // ─── Шаг 1: подтверждение ───────────────────────────────────────────
 
-function ConfirmStep({ token, studentId, childName, lesson, today, canMarkAbsence }: StepProps) {
+function ConfirmStep({ token, studentId, childName, lesson, now, canMarkAbsence }: StepProps) {
   const setAbsence = useSetPublicAbsenceMutation()
   const reason = canMarkAbsence
-    ? blocker(lesson, today, 'mark')
+    ? blocker(lesson, now, 'mark')
     : 'Школа отключила отметку пропусков из кабинета.'
 
   return (
@@ -189,7 +190,7 @@ function ConfirmStep({ token, studentId, childName, lesson, today, canMarkAbsenc
               другой группой курса. Отработка списывается как обычное занятие.
             </Bullet>
             <Bullet icon={Clock} className="bg-muted text-muted-foreground">
-              Передумаете — отметку можно снять {absenceDeadline(lesson.date, today, true)}.
+              Передумаете — отметку можно снять {absenceDeadline(lesson, now.date)}.
             </Bullet>
           </ul>
         </div>
@@ -225,7 +226,7 @@ function DoneStep({
   studentId,
   childName,
   lesson,
-  today,
+  now,
   canMarkAbsence,
   onPick,
 }: StepProps & { onPick: () => void }) {
@@ -234,12 +235,12 @@ function DoneStep({
   const busy = setAbsence.isPending || cancelMakeup.isPending
 
   const can = (action: ParentAttendanceAction) =>
-    canMarkAbsence && blocker(lesson, today, action) === null
+    canMarkAbsence && blocker(lesson, now, action) === null
   const makeup = lesson.makeup
   // Отмена отработки — действие над самой записью-отработкой, поэтому
   // предикату отдаём её, а не пропуск.
   const canCancelMakeup =
-    canMarkAbsence && makeup != null && blocker(makeup, today, 'cancelMakeup') === null
+    canMarkAbsence && makeup != null && blocker(makeup, now, 'cancelMakeup') === null
 
   return (
     <>

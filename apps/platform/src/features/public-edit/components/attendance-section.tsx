@@ -2,15 +2,12 @@
 
 import { formatDate } from '@/src/lib/timezone'
 import { Button } from '@repo/ui/components/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@repo/ui/components/collapsible'
+import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { BookOpen, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import {
+  ABSENCE_CUTOFF_MINUTES,
   attendanceOf,
   type CabinetLesson,
   cabinetLessons,
@@ -26,7 +23,14 @@ import {
 import { usePublicStudentGroupsQuery, useSelectedChild } from '../queries'
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { type ChipKind, LessonLine, ListCard, SectionTitle, StateChip } from './cabinet-ui'
+import {
+  type ChipKind,
+  CollapsiblePanel,
+  LessonLine,
+  ListCard,
+  SectionTitle,
+  StateChip,
+} from './cabinet-ui'
 
 /** Сколько занятий «Впереди» видно сразу; остальные — по кнопке. */
 const AHEAD_VISIBLE = 6
@@ -59,7 +63,7 @@ export default function AttendanceSection({ token }: { token: string }) {
     )
   }
 
-  const { today, canMarkAbsence, groups } = data
+  const { today, now, canMarkAbsence, groups } = data
 
   if (groups.length === 0) {
     return (
@@ -77,7 +81,7 @@ export default function AttendanceSection({ token }: { token: string }) {
   const child = children.find((item) => item.id === studentId)!
 
   const can = (lesson: CabinetLesson, action: ParentAttendanceAction) =>
-    canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, today, action) === null
+    canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, action) === null
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -131,7 +135,8 @@ export default function AttendanceSection({ token }: { token: string }) {
             <SectionTitle id="ahead-title">Впереди</SectionTitle>
             {canMarkAbsence && (
               <p className="text-muted-foreground text-sm leading-relaxed">
-                Предупредить о пропуске можно до конца дня накануне занятия.
+                Предупредить о пропуске можно не позднее чем за {ABSENCE_CUTOFF_MINUTES} минут до
+                начала занятия.
               </p>
             )}
           </div>
@@ -204,7 +209,7 @@ export default function AttendanceSection({ token }: { token: string }) {
           </section>
         ) : (
           // Старые месяцы свёрнуты: родителю обычно нужен последний, остальное — справка.
-          <Collapsible key={ym} className="flex flex-col gap-2.5">
+          <Collapsible key={ym} className="flex flex-col">
             <CollapsibleTrigger className="group bg-card flex min-h-16 w-full cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 text-left">
               <span className="flex flex-col gap-0.5 py-2.5">
                 <span className="text-base font-semibold">{monthLabel(ym, today)}</span>
@@ -212,9 +217,9 @@ export default function AttendanceSection({ token }: { token: string }) {
               </span>
               <ChevronDown className="text-muted-foreground size-5 shrink-0 transition-transform group-data-panel-open:rotate-180" />
             </CollapsibleTrigger>
-            <CollapsibleContent>
+            <CollapsiblePanel>
               <PastList lessons={items} />
-            </CollapsibleContent>
+            </CollapsiblePanel>
           </Collapsible>
         ),
       )}
@@ -225,7 +230,7 @@ export default function AttendanceSection({ token }: { token: string }) {
         studentId={studentId!}
         childName={child.firstName}
         lessons={lessons}
-        today={today}
+        now={now}
         canMarkAbsence={canMarkAbsence}
       />
     </div>

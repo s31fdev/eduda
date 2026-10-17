@@ -4,16 +4,17 @@ import { formatDate } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { Bell, BookOpen, Check, ChevronRight, MapPin, X } from 'lucide-react'
+import { Bell, BookOpen, Check, ChevronRight, MapPin, UserRound, X } from 'lucide-react'
 import Link from 'next/link'
 import {
-  absenceDeadline,
+  absenceCutoffPassed,
   attendanceOf,
   type CabinetLesson,
   cabinetLessons,
   forecastPaid,
   groupSummaries,
   parentAbsenceBlocker,
+  type SchoolNow,
   splitByToday,
   timeRange,
   weekday,
@@ -73,7 +74,7 @@ export default function CabinetHome({ token }: { token: string }) {
 
   // «Сегодня» считает сервер в поясе школы и отдаёт вместе с занятиями — так
   // ближайшие занятия и проверки в кабинете смотрят на одну и ту же дату.
-  const { today, canMarkAbsence } = groups.data
+  const { today, now, canMarkAbsence } = groups.data
   const lessons = cabinetLessons(groups.data.groups)
   const { ahead, past } = splitByToday(lessons, today)
   const next = ahead.find((lesson) => lesson.state !== 'cancelled')
@@ -101,7 +102,7 @@ export default function CabinetHome({ token }: { token: string }) {
         {next ? (
           <NextLessonCard
             lesson={next}
-            today={today}
+            now={now}
             canMarkAbsence={canMarkAbsence}
             onAbsence={() => drawer.openFor(next.lessonId)}
           />
@@ -171,7 +172,7 @@ export default function CabinetHome({ token }: { token: string }) {
         studentId={studentId!}
         childName={child.firstName}
         lessons={lessons}
-        today={today}
+        now={now}
         canMarkAbsence={canMarkAbsence}
       />
     </div>
@@ -204,70 +205,78 @@ function laterNote(lesson: CabinetLesson, unpaid: boolean) {
 
 function NextLessonCard({
   lesson,
-  today,
+  now,
   canMarkAbsence,
   onAbsence,
 }: {
   lesson: CabinetLesson
-  today: string
+  now: SchoolNow
   canMarkAbsence: boolean
   onAbsence: () => void
 }) {
-  const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, today, 'mark') === null
+  const today = now.date
+  const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
   const warnedByParent = lesson.state === 'warned' && lesson.att.parentMarkedAt != null
 
-  // Подсказка под кнопкой: до какого момента можно предупредить, или почему нельзя.
-  let hint: string | null = null
-  if (canMark) hint = `Предупредить о пропуске можно ${absenceDeadline(lesson.date, today)}`
-  else if (lesson.state === 'warned') hint = 'Школа знает о пропуске — занятие не спишется'
+  // Пояснение — только там, где без него непонятно, почему кнопки нет или что
+  // будет с деньгами. Срок «можно до …» не пишем: раз кнопка есть, ещё можно.
+  let notice: string | null = null
+  if (lesson.state === 'warned') notice = 'Школа знает о пропуске — занятие не спишется'
   else if (lesson.makeupFor)
-    hint = `Отработка за ${formatDate(lesson.makeupFor.date)} — спишется, даже если не прийти`
-  else if (canMarkAbsence && lesson.date === today)
-    hint = 'О пропуске сегодняшнего занятия предупредите школу напрямую'
+    notice = `Отработка за ${formatDate(lesson.makeupFor.date)} — спишется, даже если не прийти`
+  else if (canMarkAbsence && !canMark && absenceCutoffPassed(lesson, now))
+    notice = 'Предупредить о пропуске из кабинета уже нельзя — свяжитесь со школой напрямую'
 
+  // Заголовок — во всю ширину, кнопка — в строке с полями: длинная дата
+  // переносится сама и кнопку не двигает.
   return (
     <section
       aria-labelledby="next-title"
-      className="bg-primary text-primary-foreground flex flex-col gap-3.5 rounded-3xl p-5 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-6 md:p-7"
+      className="bg-primary text-primary-foreground flex flex-col gap-3 rounded-3xl p-5 md:p-7"
     >
-      <div className="flex min-w-0 flex-col gap-3">
-        <span id="next-title" className="text-sm font-medium opacity-85">
-          {lesson.makeupFor ? 'Следующее занятие · отработка' : 'Следующее занятие'}
+      <span id="next-title" className="text-sm font-medium opacity-85">
+        {lesson.makeupFor ? 'Следующее занятие · отработка' : 'Следующее занятие'}
+      </span>
+      <span className="flex flex-col gap-1">
+        <span className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">
+          {whenLabel(lesson.date, today)}
         </span>
-        <span className="flex flex-col gap-1">
-          <span className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">
-            {whenLabel(lesson.date, today)}
-          </span>
-          <span className="text-lg font-medium tabular-nums md:text-xl">
-            {timeRange(lesson.time, lesson.duration)}
-          </span>
+        <span className="text-lg font-medium tabular-nums md:text-xl">
+          {timeRange(lesson.time, lesson.duration)}
         </span>
-        <span className="flex flex-col gap-1.5 text-sm opacity-85 md:flex-row md:flex-wrap md:gap-x-5">
+      </span>
+      {notice && <span className="text-sm opacity-85">{notice}</span>}
+
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
+        <span className="flex min-w-0 flex-col gap-1.5 text-sm opacity-85 md:flex-row md:flex-wrap md:gap-x-5">
           <span className="flex items-center gap-2">
             <BookOpen className="size-4 shrink-0" />
-            {[lesson.course, lesson.teachers.join(', ')].filter(Boolean).join(' · ')}
+            <span className="sr-only">Группа:</span>
+            {lesson.course}
           </span>
+          {lesson.teachers.length > 0 && (
+            <span className="flex items-center gap-2">
+              <UserRound className="size-4 shrink-0" />
+              <span className="sr-only">Преподаватель:</span>
+              {lesson.teachers.join(', ')}
+            </span>
+          )}
           <span className="flex items-center gap-2">
             <MapPin className="size-4 shrink-0" />
+            <span className="sr-only">Место:</span>
             {lesson.location}
           </span>
         </span>
+        {(canMark || warnedByParent) && (
+          <Button
+            variant="secondary"
+            className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold md:w-60 md:shrink-0"
+            onClick={onAbsence}
+          >
+            {canMark ? 'Не сможем прийти' : 'Изменить отметку'}
+          </Button>
+        )}
       </div>
-
-      {(canMark || warnedByParent || hint) && (
-        <div className="flex flex-col gap-2 md:basis-60">
-          {(canMark || warnedByParent) && (
-            <Button
-              variant="secondary"
-              className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold"
-              onClick={onAbsence}
-            >
-              {canMark ? 'Не сможем прийти' : 'Изменить отметку'}
-            </Button>
-          )}
-          {hint && <span className="text-center text-xs opacity-85">{hint}</span>}
-        </div>
-      )}
     </section>
   )
 }

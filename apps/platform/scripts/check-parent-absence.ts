@@ -10,16 +10,27 @@
  */
 import assert from 'node:assert/strict'
 import {
+  absenceDeadline,
   parentAbsenceBlocker,
   type BlockableAttendance,
   type BlockableLesson,
+  type SchoolNow,
 } from '../src/features/public-edit/lib'
 
 const TODAY = '2026-08-07'
+const TOMORROW = '2026-08-08'
 const FUTURE = '2026-08-20'
 const PAST = '2026-07-01'
 
-const activeLesson = (date: string): BlockableLesson => ({ date, status: 'ACTIVE' })
+/** Полдень сегодня — до любого будущего занятия ещё далеко. */
+const NOW: SchoolNow = { date: TODAY, time: '12:00' }
+const at = (time: string, date = TODAY): SchoolNow => ({ date, time })
+
+const activeLesson = (date: string, time = '18:00'): BlockableLesson => ({
+  date,
+  time,
+  status: 'ACTIVE',
+})
 
 /** Неотмеченное будущее занятие — исходное состояние для «не сможем прийти». */
 const unmarked: BlockableAttendance = {
@@ -47,46 +58,88 @@ const blocked = (actual: string | null, label: string) =>
 
 // ─── Базовый сценарий ───────────────────────────────────────────────
 
-ok(parentAbsenceBlocker(unmarked, activeLesson(FUTURE), TODAY, 'mark'), 'будущее занятие, mark')
-ok(
-  parentAbsenceBlocker(parentWarned, activeLesson(FUTURE), TODAY, 'unmark'),
-  'своя отметка, unmark',
-)
-ok(
-  parentAbsenceBlocker(parentWarned, activeLesson(FUTURE), TODAY, 'makeup'),
-  'своя отметка, makeup',
-)
+ok(parentAbsenceBlocker(unmarked, activeLesson(FUTURE), NOW, 'mark'), 'будущее занятие, mark')
+ok(parentAbsenceBlocker(parentWarned, activeLesson(FUTURE), NOW, 'unmark'), 'своя отметка, unmark')
+ok(parentAbsenceBlocker(parentWarned, activeLesson(FUTURE), NOW, 'makeup'), 'своя отметка, makeup')
 
-// ─── Дедлайн: только будущие дни ────────────────────────────────────
+// ─── Срок: за 30 минут до начала ────────────────────────────────────
 
-blocked(parentAbsenceBlocker(unmarked, activeLesson(PAST), TODAY, 'mark'), 'прошедшее занятие')
-blocked(
-  parentAbsenceBlocker(unmarked, activeLesson(TODAY), TODAY, 'mark'),
-  'занятие сегодня — дедлайн уже прошёл',
+blocked(parentAbsenceBlocker(unmarked, activeLesson(PAST), NOW, 'mark'), 'прошедшее занятие')
+ok(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '18:00'), at('17:30'), 'mark'),
+  'сегодня, ровно за 30 минут',
 )
 blocked(
-  parentAbsenceBlocker(parentWarned, activeLesson(TODAY), TODAY, 'unmark'),
-  'снять отметку в день занятия',
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '18:00'), at('17:31'), 'mark'),
+  'сегодня, меньше 30 минут',
 )
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '18:00'), at('18:10'), 'mark'),
+  'занятие уже идёт',
+)
+ok(
+  parentAbsenceBlocker(parentWarned, activeLesson(TODAY, '18:00'), at('17:00'), 'unmark'),
+  'снять отметку до срока',
+)
+blocked(
+  parentAbsenceBlocker(parentWarned, activeLesson(TODAY, '18:00'), at('17:45'), 'unmark'),
+  'снять отметку позже срока',
+)
+ok(
+  parentAbsenceBlocker(unmarked, activeLesson(TOMORROW, '00:15'), at('23:45'), 'mark'),
+  'срок до полуночи, ровно за 30 минут',
+)
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(TOMORROW, '00:15'), at('23:46'), 'mark'),
+  'срок до полуночи, позже срока',
+)
+ok(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '18:00-19:30'), at('17:30'), 'mark'),
+  'время диапазоном — срок от начала',
+)
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '18:00-19:30'), at('17:31'), 'mark'),
+  'время диапазоном, позже срока',
+)
+ok(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, '9:00'), at('08:30'), 'mark'),
+  'час без ведущего нуля',
+)
+
+// Время урока не разобрать — прежний срок «до конца дня накануне».
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(TODAY, 'вечер'), at('08:00'), 'mark'),
+  'время не разобрать: в день занятия',
+)
+ok(
+  parentAbsenceBlocker(unmarked, activeLesson(TOMORROW, 'вечер'), at('23:59'), 'mark'),
+  'время не разобрать: накануне',
+)
+
+// Подпись срока в шторке — тот же момент, что и в предикате.
+assert.equal(absenceDeadline({ date: TODAY, time: '18:00' }, TODAY), 'сегодня до 17:30')
+assert.equal(absenceDeadline({ date: TOMORROW, time: '00:15' }, TODAY), 'сегодня до 23:45')
+assert.equal(absenceDeadline({ date: TOMORROW, time: '9:00' }, TODAY), 'завтра до 08:30')
+assert.equal(absenceDeadline({ date: TOMORROW, time: 'вечер' }, TODAY), 'до конца сегодняшнего дня')
 
 // ─── Отменённое занятие ─────────────────────────────────────────────
 
 blocked(
-  parentAbsenceBlocker(unmarked, { date: FUTURE, status: 'CANCELLED' }, TODAY, 'mark'),
+  parentAbsenceBlocker(unmarked, { date: FUTURE, time: '18:00', status: 'CANCELLED' }, NOW, 'mark'),
   'отменённое занятие',
 )
 
 // ─── Чужие отметки родитель не трогает ──────────────────────────────
 
 blocked(
-  parentAbsenceBlocker({ ...unmarked, status: 'PRESENT' }, activeLesson(FUTURE), TODAY, 'mark'),
+  parentAbsenceBlocker({ ...unmarked, status: 'PRESENT' }, activeLesson(FUTURE), NOW, 'mark'),
   'занятие уже отмечено преподавателем',
 )
 blocked(
   parentAbsenceBlocker(
     { ...parentWarned, parentMarkedAt: null },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'unmark',
   ),
   'снять отметку школы',
@@ -95,7 +148,7 @@ blocked(
   parentAbsenceBlocker(
     { ...parentWarned, parentMarkedAt: null },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'makeup',
   ),
   'отработка за отметку школы',
@@ -104,7 +157,7 @@ blocked(
   parentAbsenceBlocker(
     { ...unmarked, status: 'ABSENT', isWarned: false },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'unmark',
   ),
   'непредупреждённый пропуск (его ставит школа)',
@@ -118,18 +171,18 @@ const withMakeup: BlockableAttendance = {
 }
 
 blocked(
-  parentAbsenceBlocker(withMakeup, activeLesson(FUTURE), TODAY, 'makeup'),
+  parentAbsenceBlocker(withMakeup, activeLesson(FUTURE), NOW, 'makeup'),
   'вторая отработка за тот же пропуск',
 )
 ok(
-  parentAbsenceBlocker(withMakeup, activeLesson(FUTURE), TODAY, 'unmark'),
+  parentAbsenceBlocker(withMakeup, activeLesson(FUTURE), NOW, 'unmark'),
   'снять отметку вместе со своей неотмеченной отработкой',
 )
 blocked(
   parentAbsenceBlocker(
     { ...parentWarned, makeupAttendance: { status: 'UNSPECIFIED', parentMarkedAt: null } },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'unmark',
   ),
   'снять отметку, когда отработку назначила школа',
@@ -141,7 +194,7 @@ blocked(
       makeupAttendance: { status: 'PRESENT', parentMarkedAt: new Date() },
     },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'unmark',
   ),
   'снять отметку, когда отработку уже отметил преподаватель',
@@ -157,20 +210,28 @@ const makeupRow: BlockableAttendance = {
   makeupAttendance: null,
 }
 
-ok(parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), TODAY, 'cancelMakeup'), 'отмена отработки')
+ok(parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), NOW, 'cancelMakeup'), 'отмена отработки')
+ok(
+  parentAbsenceBlocker(makeupRow, activeLesson(TODAY, '18:00'), at('17:30'), 'cancelMakeup'),
+  'отмена отработки в её день, ровно за 30 минут',
+)
 blocked(
-  parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), TODAY, 'mark'),
+  parentAbsenceBlocker(makeupRow, activeLesson(TODAY, '18:00'), at('17:31'), 'cancelMakeup'),
+  'отмена отработки позже срока',
+)
+blocked(
+  parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), NOW, 'mark'),
   'отметить пропуск на самой отработке',
 )
 blocked(
-  parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), TODAY, 'makeup'),
+  parentAbsenceBlocker(makeupRow, activeLesson(FUTURE), NOW, 'makeup'),
   'отработка за отработку',
 )
 blocked(
   parentAbsenceBlocker(
     { ...makeupRow, parentMarkedAt: null },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'cancelMakeup',
   ),
   'отменить отработку, назначенную школой',
@@ -179,13 +240,13 @@ blocked(
   parentAbsenceBlocker(
     { ...makeupRow, status: 'PRESENT' },
     activeLesson(FUTURE),
-    TODAY,
+    NOW,
     'cancelMakeup',
   ),
   'отменить уже отмеченную отработку',
 )
 blocked(
-  parentAbsenceBlocker(unmarked, activeLesson(FUTURE), TODAY, 'cancelMakeup'),
+  parentAbsenceBlocker(unmarked, activeLesson(FUTURE), NOW, 'cancelMakeup'),
   'отменить отработку у обычной записи',
 )
 

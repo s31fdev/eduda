@@ -1,5 +1,6 @@
 import { formatDateOnly } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
+import { CollapsibleContent } from '@repo/ui/components/collapsible'
 import { Ban, Bell, Check, Lock, Minus, RotateCcw, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { LessonState } from '../lib'
@@ -19,6 +20,19 @@ export function ListCard({ className, ...props }: React.ComponentProps<'ul'>) {
       )}
       {...props}
     />
+  )
+}
+
+/**
+ * Раскрывающаяся часть свёрнутого блока — с плавной высотой, тем же темпом, что
+ * и смена разделов. Отступ от заголовка живёт внутри панели, а не `gap` у
+ * родителя: иначе он появлялся бы рывком раньше, чем начнётся анимация.
+ */
+export function CollapsiblePanel({ children }: { children: React.ReactNode }) {
+  return (
+    <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-(--duration-tab) ease-(--ease-tab) data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+      <div className="pt-2.5">{children}</div>
+    </CollapsibleContent>
   )
 }
 
