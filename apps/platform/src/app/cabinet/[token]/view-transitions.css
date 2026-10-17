@@ -1,0 +1,53 @@
+/*
+ * Смена раздела и ребёнка в кабинете родителя (`SectionTransition`): старое
+ * содержимое быстро затухает, новое за ним проявляется с лёгким подъёмом — тем
+ * же, что у вкладок платформы (`animate-tab-enter`, `--ease-tab`). Уход короче
+ * прихода намеренно: старое не должно спорить с новым за внимание.
+ */
+::view-transition-old(.cabinet-page) {
+  animation: 150ms ease-in both cabinet-fade-out;
+}
+
+::view-transition-new(.cabinet-page) {
+  animation: var(--duration-tab) var(--ease-tab) 120ms both tab-enter;
+}
+
+/*
+ * Высота нового раздела почти всегда другая. Без этого браузер растягивал бы
+ * рамку от старой высоты к новой, и снимки ехали бы вслед за ней.
+ */
+::view-transition-group(.cabinet-page) {
+  animation: none;
+}
+
+@keyframes cabinet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * Всё, что не содержимое (шапка, выбор ребёнка, нижний бар), меняется сразу и
+ * живым: там свои анимации — пилюли едут, иконки рисуются. Без этого браузер
+ * растворял бы старую шапку в новую, и пилюля двоилась бы. Правило действует
+ * только на страницах кабинета: снаружи `data-cabinet` нет.
+ */
+:root:has([data-cabinet])::view-transition-old(root) {
+  display: none;
+}
+
+:root:has([data-cabinet])::view-transition-new(root) {
+  animation: none;
+}
+
+/* Пока идёт переход, нажатия проходят на живую страницу, а не теряются. */
+:root:has([data-cabinet])::view-transition {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(.cabinet-page),
+  ::view-transition-new(.cabinet-page) {
+    animation: none;
+  }
+}

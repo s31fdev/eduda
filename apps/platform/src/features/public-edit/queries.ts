@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { parseAsInteger, useQueryState } from 'nuqs'
+import { startTransition } from 'react'
 import { toast } from 'sonner'
 import {
   cancelPublicMakeup,
@@ -94,7 +95,11 @@ export const useSelectedChild = (token: string) => {
   // приходится собирать с этим суффиксом. Одному ребёнку параметр не нужен.
   const childQuery = children.length > 1 && studentId != null ? `?child=${studentId}` : ''
 
-  return { studentId, children, childQuery, setChild, isPending, isError }
+  // Смена ребёнка — переход React: только под ним `SectionTransition` плавно
+  // меняет содержимое, обычное обновление состояния сменило бы его рывком.
+  const selectChild = (id: number) => startTransition(() => void setChild(id))
+
+  return { studentId, children, childQuery, setChild: selectChild, isPending, isError }
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────

@@ -1,14 +1,19 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { ViewTransition } from 'react'
 import { useSelectedChild } from '../queries'
 
 /**
- * Раздел и ребёнок сменяются плавно: новое содержимое проявляется с лёгким
- * подъёмом (`animate-tab-enter`, как вкладки на входе в платформу; при
- * «уменьшить движение» анимации нет). Ключ по разделу и ребёнку перезапускает её.
- * Исчезновения старого не ждём: данные уже в кеше, и пауза ради него только
- * замедлила бы переход.
+ * Раздел и ребёнок сменяются через View Transitions: браузер снимает старое
+ * содержимое, оно затухает, новое проявляется (анимация — в
+ * `app/cabinet/[token]/view-transitions.css`). Ключ по разделу и ребёнку делает
+ * старое и новое парой: React даёт им одно имя, и браузер ведёт их как одно место.
+ *
+ * Срабатывает только в переходах React: навигация Next — переход сама, смена
+ * ребёнка обёрнута в `startTransition` в `useSelectedChild`. Первая загрузка
+ * и обновления данных внутри раздела не анимируются (`default="none"`).
+ * Браузер без View Transitions просто меняет содержимое, как раньше.
  */
 export function SectionTransition({
   token,
@@ -21,8 +26,13 @@ export function SectionTransition({
   const { studentId } = useSelectedChild(token)
 
   return (
-    <div key={`${pathname}:${studentId}`} className="animate-tab-enter">
-      {children}
-    </div>
+    <ViewTransition
+      key={`${pathname}:${studentId}`}
+      name="cabinet-page"
+      share="cabinet-page"
+      default="none"
+    >
+      <div>{children}</div>
+    </ViewTransition>
   )
 }
