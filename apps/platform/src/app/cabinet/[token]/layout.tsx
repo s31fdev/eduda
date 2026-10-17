@@ -1,4 +1,5 @@
 import { CabinetHeader, CabinetTabBar } from '@/src/features/public-edit/components/cabinet-nav'
+import { SectionTransition } from '@/src/features/public-edit/components/section-transition'
 import {
   cabinetQuery,
   financesQuery,
@@ -59,7 +60,7 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
         <CabinetHeader token={token.data} />
         {/* pb-28 — под фиксированный таб-бар, его на десктопе нет. */}
         <main className="mx-auto max-w-280 px-4 pt-4 pb-28 md:px-6 md:pt-6 md:pb-10">
-          {children}
+          <SectionTransition token={token.data}>{children}</SectionTransition>
         </main>
         <CabinetTabBar token={token.data} />
       </div>
