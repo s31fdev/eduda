@@ -5,12 +5,7 @@ import {
   cancelPublicMakeup,
   createPublicMakeup,
   createPublicParent,
-  getCabinetData,
   getPublicMakeupOptions,
-  getPublicStudentData,
-  getPublicStudentFinances,
-  getPublicPoll,
-  getPublicStudentGroups,
   savePublicPoll,
   setPublicAbsence,
   updatePublicParent,
@@ -25,68 +20,30 @@ import type {
   UpdatePublicStudentSchemaType,
 } from './schemas'
 import type { PollAnswer, SavePollAnswerSchemaType } from './poll'
+import {
+  cabinetQuery,
+  financesQuery,
+  groupsQuery,
+  pollQuery,
+  publicEditKeys,
+  studentQuery,
+} from './query-options'
 
-export const publicEditKeys = {
-  cabinet: (token: string) => ['public-edit', token, 'cabinet'] as const,
-  poll: (token: string) => ['public-edit', token, 'poll'] as const,
-  student: (token: string, studentId: number) =>
-    ['public-edit', token, 'student', studentId] as const,
-  finances: (token: string, studentId: number) =>
-    ['public-edit', token, 'finances', studentId] as const,
-  groups: (token: string, studentId: number) =>
-    ['public-edit', token, 'groups', studentId] as const,
-  makeupOptions: (token: string, studentId: number, attendanceId: number) =>
-    ['public-edit', token, 'makeup-options', studentId, attendanceId] as const,
-}
+export { publicEditKeys }
 
 // ─── Read-only queries ──────────────────────────────────────────────
 
-export const useCabinetDataQuery = (token: string) => {
-  return useQuery({
-    queryKey: publicEditKeys.cabinet(token),
-    queryFn: async () => {
-      const { data, serverError } = await getCabinetData({ token })
-      if (serverError) throw serverError
-      return data ?? null
-    },
-  })
-}
+export const useCabinetDataQuery = (token: string) => useQuery(cabinetQuery(token))
 
-export const usePublicStudentDataQuery = (token: string, studentId: number | undefined) => {
-  return useQuery({
-    queryKey: publicEditKeys.student(token, studentId ?? 0),
-    queryFn: async () => {
-      const { data, serverError } = await getPublicStudentData({ token, studentId })
-      if (serverError) throw serverError
-      return data ?? null
-    },
-    enabled: studentId != null,
-  })
-}
+// Пока ребёнок не известен, ключ с нулём не уходит в запрос (`enabled`).
+export const usePublicStudentDataQuery = (token: string, studentId: number | undefined) =>
+  useQuery({ ...studentQuery(token, studentId ?? 0), enabled: studentId != null })
 
-export const usePublicStudentFinancesQuery = (token: string, studentId: number | undefined) => {
-  return useQuery({
-    queryKey: publicEditKeys.finances(token, studentId ?? 0),
-    queryFn: async () => {
-      const { data, serverError } = await getPublicStudentFinances({ token, studentId })
-      if (serverError) throw serverError
-      return data ?? null
-    },
-    enabled: studentId != null,
-  })
-}
+export const usePublicStudentFinancesQuery = (token: string, studentId: number | undefined) =>
+  useQuery({ ...financesQuery(token, studentId ?? 0), enabled: studentId != null })
 
-export const usePublicStudentGroupsQuery = (token: string, studentId: number | undefined) => {
-  return useQuery({
-    queryKey: publicEditKeys.groups(token, studentId ?? 0),
-    queryFn: async () => {
-      const { data, serverError } = await getPublicStudentGroups({ token, studentId })
-      if (serverError) throw serverError
-      return data ?? null
-    },
-    enabled: studentId != null,
-  })
-}
+export const usePublicStudentGroupsQuery = (token: string, studentId: number | undefined) =>
+  useQuery({ ...groupsQuery(token, studentId ?? 0), enabled: studentId != null })
 
 /**
  * Занятия, на которые можно записаться взамен пропущенного. Грузим лениво — при
@@ -271,16 +228,7 @@ export const useCancelPublicMakeupMutation = () => {
 
 // ─── Опрос родителей (временный, см. poll.ts) ───────────────────────
 
-export const usePublicPollQuery = (token: string) => {
-  return useQuery({
-    queryKey: publicEditKeys.poll(token),
-    queryFn: async () => {
-      const { data, serverError } = await getPublicPoll({ token })
-      if (serverError) throw serverError
-      return data ?? null
-    },
-  })
-}
+export const usePublicPollQuery = (token: string) => useQuery(pollQuery(token))
 
 /** Сохраняет ответ целиком; экран меняется сразу, при ошибке откатывается. */
 export const useSavePublicPollMutation = () => {
