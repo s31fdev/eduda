@@ -30,20 +30,12 @@
  * же, что у вкладок платформы (`animate-tab-enter`, `--ease-tab`). Уход короче
  * прихода намеренно: старое не должно спорить с новым за внимание.
  */
-::view-transition-old(.cabinet-page) {
+::view-transition-old(.cabinet-exit) {
   animation: 150ms ease-in both cabinet-fade-out;
 }
 
-::view-transition-new(.cabinet-page) {
+::view-transition-new(.cabinet-enter) {
   animation: var(--duration-tab) var(--ease-tab) 120ms both tab-enter;
-}
-
-/*
- * Высота нового раздела почти всегда другая. Без этого браузер растягивал бы
- * рамку от старой высоты к новой, и снимки ехали бы вслед за ней.
- */
-::view-transition-group(.cabinet-page) {
-  animation: none;
 }
 
 @keyframes cabinet-fade-out {
@@ -67,20 +59,28 @@
 }
 
 /*
- * Нижний бар фиксирован поверх содержимого, но снимки раздела — отдельный слой
- * перехода, и без своего имени бар оставался бы внизу, в `root`: карточки
- * накрывали его, пока раздел гаснет и проявляется, а в конце он выскакивал
- * обратно. Своё имя поднимает бар в слой над разделом (он и в странице рисуется
- * позже), а без анимации он остаётся живым — пилюля едет, как без перехода.
+ * Шапка и нижний бар — над разделом. Снимки раздела — отдельный слой перехода,
+ * и без своих имён шапка и бар оставались бы внизу, в `root`: карточки накрывали
+ * бар, пока раздел гаснет и проявляется, а гаснущий раздел прокрученной страницы
+ * наползал на шапку. Слои идут в порядке отрисовки страницы, поэтому шапка
+ * поднята `z-10` (бар фиксирован с `z-20`). Без анимации оба остаются живыми —
+ * пилюли едут, иконки рисуются, как без перехода.
  */
+.cabinet-header {
+  view-transition-name: cabinet-header;
+}
+
 .cabinet-tabbar {
   view-transition-name: cabinet-tabbar;
 }
 
+::view-transition-old(cabinet-header),
 ::view-transition-old(cabinet-tabbar) {
   display: none;
 }
 
+::view-transition-new(cabinet-header),
+::view-transition-group(cabinet-header),
 ::view-transition-new(cabinet-tabbar),
 ::view-transition-group(cabinet-tabbar) {
   animation: none;
@@ -92,8 +92,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(.cabinet-page),
-  ::view-transition-new(.cabinet-page) {
+  ::view-transition-old(.cabinet-exit),
+  ::view-transition-new(.cabinet-enter) {
     animation: none;
   }
 }

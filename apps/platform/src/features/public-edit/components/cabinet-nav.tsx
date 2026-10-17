@@ -95,7 +95,8 @@ export function CabinetHeader({ token }: { token: string }) {
     (isHome && child ? getFullName(child.firstName, child.lastName) : null) ?? section?.label
 
   return (
-    <header>
+    // `cabinet-header` и `z-10` держат шапку над сменой раздела (cabinet.css).
+    <header className="cabinet-header relative z-10">
       <div className="bg-card hidden border-b md:block">
         <div className="cabinet-centered mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
           <Link
