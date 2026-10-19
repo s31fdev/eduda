@@ -1,7 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import {
   getCabinetData,
-  getPublicPoll,
   getPublicStudentData,
   getPublicStudentFinances,
   getPublicStudentGroups,
@@ -15,7 +14,6 @@ import {
 
 export const publicEditKeys = {
   cabinet: (token: string) => ['public-edit', token, 'cabinet'] as const,
-  poll: (token: string) => ['public-edit', token, 'poll'] as const,
   /** Профили всех детей разом — для правок, которые видны у каждого (общий родитель). */
   students: (token: string) => ['public-edit', token, 'student'] as const,
   student: (token: string, studentId: number) =>
@@ -53,13 +51,6 @@ export const cabinetQuery = (token: string) =>
   queryOptions({
     queryKey: publicEditKeys.cabinet(token),
     queryFn: () => unwrapAction(getCabinetData({ token })),
-    ...KEEP,
-  })
-
-export const pollQuery = (token: string) =>
-  queryOptions({
-    queryKey: publicEditKeys.poll(token),
-    queryFn: () => unwrapAction(getPublicPoll({ token })),
     ...KEEP,
   })
 

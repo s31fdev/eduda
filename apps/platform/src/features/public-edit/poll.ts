@@ -1,10 +1,8 @@
-import * as z from 'zod'
-import { TokenSchema } from './schemas'
-
-// Разовый опрос родителей «Алгоритмики» (станция «Выборы»). Мероприятие
-// временное, поэтому базу не трогаем: ответы пишутся в файл на сервере
-// (`poll.server.ts`), а варианты живут здесь. Опрос кончился — удалить этот
-// файл, `poll.server.ts`, блок на главной кабинета и скрипт итогов.
+// Разовый опрос родителей «Алгоритмики» (станция «Выборы»). Закрыт 19.10.2026:
+// блок из кабинета убран, ответы остались в файле на сервере (`poll.server.ts`).
+// Здесь — варианты в том виде, в каком их видели родители: по ним
+// `scripts/parent-poll-results.ts` пересобирает итоги. Итоги больше не нужны —
+// удалить этот файл, `poll.server.ts` и скрипт.
 
 export const PARENT_POLL = {
   organizationId: 1,
@@ -53,18 +51,5 @@ export const PARENT_POLL = {
   ],
 } as const
 
-const OPTION_KEYS: readonly string[] = PARENT_POLL.options.map((option) => option.key)
-const OptionKeySchema = z.string().refine((key) => OPTION_KEYS.includes(key), 'Нет такого варианта')
-
+// Повтор ключа в `votes` — несколько голосов за один вариант.
 export type PollAnswer = { votes: string[]; signups: string[] }
-
-export const SavePollAnswerSchema = z.object({
-  token: TokenSchema,
-  // Повтор ключа — несколько голосов за один вариант.
-  votes: z.array(OptionKeySchema).max(PARENT_POLL.votes),
-  signups: z
-    .array(OptionKeySchema)
-    .refine((keys) => new Set(keys).size === keys.length, 'Повтор в записи'),
-})
-
-export type SavePollAnswerSchemaType = z.input<typeof SavePollAnswerSchema>

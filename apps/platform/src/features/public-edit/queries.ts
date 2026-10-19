@@ -8,7 +8,6 @@ import {
   createPublicMakeup,
   createPublicParent,
   getPublicMakeupOptions,
-  savePublicPoll,
   setPublicAbsence,
   updatePublicParent,
   updatePublicStudent,
@@ -21,12 +20,10 @@ import type {
   UpdatePublicParentSchemaType,
   UpdatePublicStudentSchemaType,
 } from './schemas'
-import type { PollAnswer, SavePollAnswerSchemaType } from './poll'
 import {
   cabinetQuery,
   financesQuery,
   groupsQuery,
-  pollQuery,
   publicEditKeys,
   studentQuery,
   unwrapAction,
@@ -211,33 +208,5 @@ export const useCancelPublicMakeupMutation = () => {
       }),
     onError: (error) =>
       toast.error(errorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
-  })
-}
-
-// ─── Опрос родителей (временный, см. poll.ts) ───────────────────────
-
-export const usePublicPollQuery = (token: string) => useQuery(pollQuery(token))
-
-/** Сохраняет ответ целиком; экран меняется сразу, при ошибке откатывается. */
-export const useSavePublicPollMutation = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    // Подряд идущие нажатия уходят по очереди: иначе ответы могли бы прийти
-    // на сервер не в том порядке, и в файле осталось бы не последнее.
-    scope: { id: 'parent-poll' },
-    mutationFn: (values: SavePollAnswerSchemaType) => unwrapAction(savePublicPoll(values)),
-    onMutate: async ({ token, votes, signups }) => {
-      const key = publicEditKeys.poll(token)
-      // Перечитывание опроса, начатое раньше (например, при возврате на вкладку),
-      // иначе легло бы поверх и стёрло только что отданный голос.
-      await queryClient.cancelQueries({ queryKey: key })
-      const previous = queryClient.getQueryData<PollAnswer | null>(key)
-      queryClient.setQueryData<PollAnswer>(key, { votes, signups })
-      return { previous }
-    },
-    onError: (_error, { token }, context) => {
-      queryClient.setQueryData(publicEditKeys.poll(token), context?.previous)
-      toast.error('Не удалось сохранить. Попробуйте ещё раз.')
-    },
   })
 }

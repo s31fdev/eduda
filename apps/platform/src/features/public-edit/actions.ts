@@ -11,8 +11,6 @@ import { touchStudentData } from '@/src/lib/student-data'
 import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
 import { getAgeFromBirthDate, getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
 import { addDaysYmd, parentAbsenceBlocker, schoolNow } from './lib'
-import { PARENT_POLL, SavePollAnswerSchema } from './poll'
-import { readPollAnswers, savePollAnswer } from './poll.server'
 import {
   CancelPublicMakeupSchema,
   CreatePublicMakeupSchema,
@@ -750,31 +748,4 @@ export const cancelPublicMakeup = publicAction
       })
       await tx.attendance.delete({ where: { id: makeup.id } })
     })
-  })
-
-// ─── Опрос родителей (временный, см. poll.ts) ───────────────────────
-
-/** Ответ родителя, или `null`, если у его школы опроса нет — блок не показывается. */
-export const getPublicPoll = publicAction
-  .metadata({ actionName: 'getPublicPoll' })
-  .inputSchema(PublicTokenSchema)
-  .action(async ({ parsedInput }) => {
-    const parent = await getParentByToken(parsedInput.token)
-    if (!parent || parent.organizationId !== PARENT_POLL.organizationId) return null
-
-    const answer = (await readPollAnswers()).get(parent.id)
-    return { votes: answer?.votes ?? [], signups: answer?.signups ?? [] }
-  })
-
-export const savePublicPoll = publicAction
-  .metadata({ actionName: 'savePublicPoll' })
-  .inputSchema(SavePollAnswerSchema)
-  .action(async ({ parsedInput: { token, votes, signups } }) => {
-    const parent = await getParentByToken(token)
-    if (!parent || parent.organizationId !== PARENT_POLL.organizationId) {
-      throw new NotFoundError('Опрос не найден.')
-    }
-
-    await savePollAnswer(parent.id, { votes, signups })
-    return { votes, signups }
   })

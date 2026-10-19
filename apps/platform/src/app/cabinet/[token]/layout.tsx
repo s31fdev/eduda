@@ -5,7 +5,6 @@ import {
   cabinetQuery,
   financesQuery,
   groupsQuery,
-  pollQuery,
   studentQuery,
 } from '@/src/features/public-edit/query-options'
 import { TokenSchema } from '@/src/features/public-edit/schemas'
@@ -50,7 +49,6 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
   // переключение ребёнка достаёт данные из кеша мгновенно. Детей в семье два-три,
   // так что это несколько запросов один раз на открытие ссылки.
   await Promise.all([
-    queryClient.prefetchQuery(pollQuery(token.data)),
     queryClient.prefetchQuery(cabinetMessengersQuery(token.data)),
     ...cabinet.children.flatMap((child) => [
       queryClient.prefetchQuery(groupsQuery(token.data, child.id)),
