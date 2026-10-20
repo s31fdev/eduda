@@ -222,7 +222,7 @@ const COMMANDS = [
  */
 export async function ensureCommands(token: string): Promise<boolean> {
   try {
-    const response = await call(token, '/me', {
+    const response = await call(token, '/me/commands', {
       method: 'PATCH',
       body: JSON.stringify({ commands: COMMANDS }),
     })
