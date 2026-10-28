@@ -93,17 +93,16 @@ export const DeleteAttendanceByIdSchema = z.object({
   id: z.number().int().positive(),
 })
 
+// Ученика и старую отработку сервер берёт из пропуска (`makeup.server.ts`), а не
+// из запроса: подставленные номера записывали чужого ученика и удаляли чужие строки.
 export const CreateMakeupSchema = z.object({
   attendanceId: z.number().int().positive(),
-  studentId: z.number().int().positive(),
   targetLessonId: z.number().int().positive(),
   creditBalance: z.boolean(),
 })
 
 export const RescheduleMakeupSchema = z.object({
   attendanceId: z.number().int().positive(),
-  oldMakeupAttendanceId: z.number().int().positive(),
-  studentId: z.number().int().positive(),
   targetLessonId: z.number().int().positive(),
 })
 

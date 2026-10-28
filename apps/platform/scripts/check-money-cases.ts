@@ -25,6 +25,8 @@ import {
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
+import { createMakeupTx, rescheduleMakeupTx } from '../src/features/lessons/makeup.server'
+import { ConflictError, NotFoundError } from '../src/lib/error'
 
 class Rollback extends Error {}
 
@@ -147,6 +149,15 @@ async function main() {
           })
           return attendance.id
         }
+
+        /** Урок без строки ученика — туда записывают на отработку. */
+        const lessonIn = async (groupId: number) =>
+          (
+            await tx.lesson.create({
+              data: { organizationId, groupId, date: nextDate(), time: '10:00' },
+              select: { id: true },
+            })
+          ).id
 
         /** То же, что делает `updateAttendanceStatus`: сначала статус, потом деньги. */
         const mark = async (
@@ -586,15 +597,12 @@ async function main() {
           await mark(missed, AttendanceStatus.ABSENT, false)
           assert.equal(await remainingOf(p.id), 9)
 
-          // createMakeup с возвратом урока.
-          const makeup = await visit({
-            studentId: s.studentId,
-            status: AttendanceStatus.UNSPECIFIED,
-            makeupFor: missed,
-          })
-          await unchargeAttendanceTx(tx, {
-            attendanceId: missed,
+          // Запись с возвратом урока — то же, что делает `createMakeup`.
+          const { id: makeup } = await createMakeupTx(tx, {
             organizationId,
+            sourceAttendanceId: missed,
+            targetLessonId: await lessonIn(groupTwo.id),
+            creditBalance: true,
             actorUserId: null,
           })
           assert.equal(await remainingOf(p.id), 10)
@@ -695,6 +703,121 @@ async function main() {
           assert.equal((await entryOf(makeup)).packageId, p.id)
           assert.equal(await remainingOf(p.id), 9)
           ok('отработка в чужой группе платит кошельком группы пропуска')
+        }
+
+        console.log('\nЗапись на отработку')
+
+        {
+          const s = await scene('Запись на отработку')
+          const missed = await visit({ studentId: s.studentId })
+          await mark(missed, AttendanceStatus.ABSENT, true)
+          const args = { organizationId, sourceAttendanceId: missed, actorUserId: null }
+          const book = (targetLessonId: number) =>
+            createMakeupTx(tx, { ...args, targetLessonId, creditBalance: false })
+          // Отказ приложения, а не ошибка базы: та оборвала бы всю транзакцию сверки.
+          const refused = (pattern: RegExp) => (error: unknown) =>
+            (error instanceof ConflictError || error instanceof NotFoundError) &&
+            pattern.test(error.message)
+
+          // Вторая школа — своя, а не найденная в базе: на пустой базе её может не быть.
+          const other = await tx.organization.create({
+            data: { name: 'Чужая школа (проверка отработок)', slug: `check-makeup-${Date.now()}` },
+            select: { id: true },
+          })
+          const otherCourse = await tx.course.create({
+            data: { organizationId: other.id, name: 'Чужой курс' },
+            select: { id: true },
+          })
+          const otherLocation = await tx.location.create({
+            data: { organizationId: other.id, name: 'Чужой филиал' },
+            select: { id: true },
+          })
+          const otherGroup = await tx.group.create({
+            data: {
+              organizationId: other.id,
+              courseId: otherCourse.id,
+              locationId: otherLocation.id,
+              name: 'Чужая группа',
+              startDate: '2026-09-01',
+              maxStudents: 20,
+            },
+            select: { id: true },
+          })
+          const foreign = await tx.lesson.create({
+            data: {
+              organizationId: other.id,
+              groupId: otherGroup.id,
+              date: nextDate(),
+              time: '10:00',
+            },
+            select: { id: true },
+          })
+          await assert.rejects(book(foreign.id), refused(/Урок не найден/))
+          assert.equal(await tx.attendance.count({ where: { lessonId: foreign.id } }), 0)
+          ok('урок чужой школы не находится, строка туда не попадает')
+
+          const cancelled = await lessonIn(groupTwo.id)
+          await tx.lesson.update({ where: { id: cancelled }, data: { status: 'CANCELLED' } })
+          await assert.rejects(book(cancelled), refused(/отменён/))
+          ok('на отменённый урок не записывает')
+
+          const fullGroup = await tx.group.create({
+            data: {
+              organizationId,
+              courseId: course.id,
+              locationId: location.id,
+              name: 'Полная группа',
+              startDate: '2026-09-01',
+              maxStudents: 1,
+            },
+            select: { id: true },
+          })
+          const neighbour = await scene('Занял место')
+          const full = await lessonIn(fullGroup.id)
+          await tx.attendance.create({
+            data: { organizationId, studentId: neighbour.studentId, lessonId: full, comment: '' },
+          })
+          await assert.rejects(book(full), refused(/нет свободных мест/))
+          ok('на урок без мест не записывает')
+
+          const own = await visit({ studentId: s.studentId, groupId: groupTwo.id })
+          const { lessonId: ownLesson } = await tx.attendance.findUniqueOrThrow({
+            where: { id: own },
+            select: { lessonId: true },
+          })
+          await assert.rejects(book(ownLesson), refused(/уже записан/))
+          ok('повтор на урок, где ученик уже есть, — отказ, а не ошибка базы')
+
+          const first = await book(await lessonIn(groupTwo.id))
+          assert.equal(first.studentId, s.studentId)
+          await assert.rejects(book(await lessonIn(groupTwo.id)), refused(/уже назначена/))
+          ok('вторая отработка за тот же пропуск — отказ')
+
+          await assert.rejects(
+            createMakeupTx(tx, {
+              ...args,
+              sourceAttendanceId: first.id,
+              targetLessonId: await lessonIn(groupTwo.id),
+              creditBalance: false,
+            }),
+            refused(/ещё раз/),
+          )
+          ok('отработку нельзя отработать')
+
+          const moved = await rescheduleMakeupTx(tx, {
+            ...args,
+            targetLessonId: await lessonIn(groupTwo.id),
+          })
+          assert.equal(await tx.attendance.count({ where: { id: first.id } }), 0)
+          assert.equal(moved.makeupForAttendanceId, missed)
+          assert.equal(await tx.attendance.count({ where: { lessonId: full } }), 1)
+          ok('перенос удаляет только отработку своего пропуска')
+
+          await assert.rejects(
+            rescheduleMakeupTx(tx, { ...args, sourceAttendanceId: own, targetLessonId: full }),
+            refused(/нет отработки/),
+          )
+          ok('перенос без отработки — отказ')
         }
 
         console.log('\nНесколько кошельков и разовые визиты')

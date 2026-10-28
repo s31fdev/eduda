@@ -71,24 +71,14 @@ export default function MakeUpDialog({ open, onOpenChange, attendance }: MakeUpD
 
     const onSettled = () => handleOpenChange(false)
 
-    if (isReschedule && attendance.makeupAttendance) {
+    if (isReschedule) {
       rescheduleMakeupMutation.mutate(
-        {
-          attendanceId: attendance.id,
-          oldMakeupAttendanceId: attendance.makeupAttendance.id,
-          studentId: attendance.studentId,
-          targetLessonId: selectedLesson.id,
-        },
+        { attendanceId: attendance.id, targetLessonId: selectedLesson.id },
         { onSettled },
       )
     } else {
       createMakeup.mutate(
-        {
-          attendanceId: attendance.id,
-          studentId: attendance.studentId,
-          targetLessonId: selectedLesson.id,
-          creditBalance,
-        },
+        { attendanceId: attendance.id, targetLessonId: selectedLesson.id, creditBalance },
         { onSettled },
       )
     }

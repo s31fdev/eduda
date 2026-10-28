@@ -1,7 +1,7 @@
 'use server'
 
 import { Prisma } from '@repo/db'
-import { AttendanceStatus, CoinTxReason, StudentLessonsBalanceChangeReason } from '@repo/db/enums'
+import { AttendanceStatus, CoinTxReason } from '@repo/db/enums'
 import { prisma } from '@repo/db'
 import {
   chargeAttendanceTx,
@@ -17,6 +17,7 @@ import { authAction, hasPermission, permissionAction } from '@/src/lib/safe-acti
 import { setLessonStatusTx } from '@/src/features/status-log/record.server'
 import { DateOnlySchema, formatDateOnly, todayYmdInTz } from '@/src/lib/timezone'
 import { getGroupName } from '@/src/lib/utils'
+import { createMakeupTx, rescheduleMakeupTx } from './makeup.server'
 import * as z from 'zod'
 import {
   AddTeacherToLessonSchema,
@@ -517,77 +518,33 @@ export const deleteAttendanceById = permissionAction(DELETE_ATTENDANCE_PERMISSIO
 export const createMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'createMakeup' })
   .inputSchema(CreateMakeupSchema)
-  .action(async ({ ctx, parsedInput }) => {
-    const { attendanceId, studentId, targetLessonId, creditBalance } = parsedInput
-    const organizationId = ctx.session.organizationId!
-
-    const attendance = await prisma.attendance.findFirst({
-      where: { id: attendanceId, organizationId },
-      include: { lesson: true },
-    })
-    if (!attendance) throw new NotFoundError('Запись посещаемости не найдена')
-
-    const newAttendance = await prisma.attendance.create({
-      data: {
-        organizationId,
-        studentId,
-        lessonId: targetLessonId,
-        comment: '',
-        status: 'UNSPECIFIED',
-        makeupForAttendanceId: attendanceId,
-      },
-    })
-
-    if (creditBalance) {
-      // Урок за пропуск возвращается: и в пакет, из которого его списали, и на
-      // баланс. Спишется он заново уже на отработке — по цене того пакета,
-      // который будет головным тогда.
-      await prisma.$transaction(async (tx) => {
-        await unchargeAttendanceTx(tx, {
-          attendanceId: attendance.id,
-          organizationId: ctx.session.organizationId!,
-          actorUserId: Number(ctx.session.user.id),
-          reason: StudentLessonsBalanceChangeReason.MAKEUP_GRANTED,
-          meta: { makeupAttendanceId: newAttendance.id },
-        })
-      })
-    }
-
-    return newAttendance
-  })
+  .action(async ({ ctx, parsedInput }) =>
+    prisma.$transaction((tx) =>
+      createMakeupTx(tx, {
+        organizationId: ctx.session.organizationId!,
+        sourceAttendanceId: parsedInput.attendanceId,
+        targetLessonId: parsedInput.targetLessonId,
+        creditBalance: parsedInput.creditBalance,
+        actorUserId: Number(ctx.session.user.id),
+      }),
+    ),
+  )
 
 // ─── Reschedule Makeup ───────────────────────────────────────────────────────
 
 export const rescheduleMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'rescheduleMakeup' })
   .inputSchema(RescheduleMakeupSchema)
-  .action(async ({ ctx, parsedInput }) => {
-    const { attendanceId, oldMakeupAttendanceId, studentId, targetLessonId } = parsedInput
-    const organizationId = ctx.session.organizationId!
-
-    return await prisma.$transaction(async (tx) => {
-      // Отработку перенесли: если по старой дате урок уже списали, возвращаем его
-      // в пакет и на баланс — на новой дате он спишется заново.
-      await unchargeAttendanceTx(tx, {
-        attendanceId: oldMakeupAttendanceId,
+  .action(async ({ ctx, parsedInput }) =>
+    prisma.$transaction((tx) =>
+      rescheduleMakeupTx(tx, {
         organizationId: ctx.session.organizationId!,
+        sourceAttendanceId: parsedInput.attendanceId,
+        targetLessonId: parsedInput.targetLessonId,
         actorUserId: Number(ctx.session.user.id),
-        meta: { rescheduledTo: targetLessonId },
-      })
-      await tx.attendance.delete({ where: { id: oldMakeupAttendanceId, organizationId } })
-
-      return await tx.attendance.create({
-        data: {
-          organizationId,
-          studentId,
-          lessonId: targetLessonId,
-          comment: '',
-          status: 'UNSPECIFIED',
-          makeupForAttendanceId: attendanceId,
-        },
-      })
-    })
-  })
+      }),
+    ),
+  )
 
 // ─── Teacher Lesson ──────────────────────────────────────────────────────────
 
