@@ -84,6 +84,19 @@ export default function AttendanceSection({ token }: { token: string }) {
   const can = (lesson: CabinetLesson, action: ParentAttendanceAction) =>
     canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, action) === null
 
+  // Прошедший пропуск открывается в шторку, пока его можно отработать: не старше
+  // месяца, с предупреждением или без.
+  const pastRow = (lesson: CabinetLesson) => {
+    const source = lesson.makeupFor ?? lesson
+    return {
+      canMakeup: can(lesson, 'makeup'),
+      open:
+        canMarkAbsence && absenceActionable(source, now)
+          ? () => drawer.openFor(source.lessonId)
+          : null,
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <section
@@ -201,7 +214,7 @@ export default function AttendanceSection({ token }: { token: string }) {
         index === 0 ? (
           <section key={ym} aria-labelledby={`month-${ym}`} className="flex flex-col gap-2.5">
             <SectionTitle id={`month-${ym}`}>{monthLabel(ym, today)}</SectionTitle>
-            <PastList lessons={items} />
+            <PastList lessons={items} row={pastRow} />
           </section>
         ) : (
           // Старые месяцы свёрнуты: родителю обычно нужен последний, остальное — справка.
@@ -214,7 +227,7 @@ export default function AttendanceSection({ token }: { token: string }) {
               <ChevronDown className="text-muted-foreground size-5 shrink-0 transition-transform group-data-panel-open:rotate-180" />
             </CollapsibleTrigger>
             <CollapsiblePanel>
-              <PastList lessons={items} />
+              <PastList lessons={items} row={pastRow} />
             </CollapsiblePanel>
           </Collapsible>
         ),
@@ -233,20 +246,42 @@ export default function AttendanceSection({ token }: { token: string }) {
   )
 }
 
-function PastList({ lessons }: { lessons: CabinetLesson[] }) {
+function PastList({
+  lessons,
+  row,
+}: {
+  lessons: CabinetLesson[]
+  row: (lesson: CabinetLesson) => { canMakeup: boolean; open: (() => void) | null }
+}) {
   return (
     <ListCard>
-      {lessons.map((lesson) => (
-        <li key={lesson.lessonId} className="flex items-center gap-3.5 px-4 py-3">
+      {lessons.map((lesson) => {
+        const { canMakeup, open } = row(lesson)
+        const line = (
           <LessonLine
             date={lesson.date}
             title={`${weekday(lesson.date)}, ${lesson.time}`}
-            sub={pastSub(lesson)}
+            sub={pastSub(lesson, canMakeup)}
           >
             <StateChip kind={lesson.state} />
           </LessonLine>
-        </li>
-      ))}
+        )
+        return (
+          <li key={lesson.lessonId}>
+            {open ? (
+              <button
+                type="button"
+                onClick={open}
+                className="hover:bg-muted/60 flex w-full cursor-pointer items-center gap-3.5 px-4 py-3 text-left transition-colors"
+              >
+                {line}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3.5 px-4 py-3">{line}</div>
+            )}
+          </li>
+        )
+      })}
     </ListCard>
   )
 }
@@ -297,9 +332,15 @@ function aheadSub(lesson: CabinetLesson, canMakeup: boolean) {
 }
 
 /** Вторая строка прошедшего: отработки, деньги за пропуск, слова преподавателя. */
-function pastSub(lesson: CabinetLesson) {
+function pastSub(lesson: CabinetLesson, canMakeup: boolean) {
   const comment = lesson.att.comment.trim()
   const said = comment ? `Преподаватель: «${comment}»` : null
+  const makeup = lesson.makeup
+  const makeupNote =
+    makeup &&
+    (makeup.state === 'present'
+      ? `отработали ${formatDate(makeup.date)}`
+      : `отработка ${formatDate(makeup.date)}`)
 
   if (lesson.state === 'cancelled') return 'Занятие отменено школой'
   if (lesson.state === 'pending') return 'Преподаватель ещё не отметил'
@@ -307,11 +348,12 @@ function pastSub(lesson: CabinetLesson) {
     return [`Отработка за ${formatDate(lesson.makeupFor.date)}`, said].filter(Boolean).join(' · ')
   }
   if (lesson.state === 'warned') {
-    const makeup = lesson.makeup
-    if (!makeup) return 'Не списано'
-    return makeup.state === 'present'
-      ? `Не списано · отработали ${formatDate(makeup.date)}`
-      : `Не списано · отработка ${formatDate(makeup.date)}`
+    return ['Не списано', makeupNote ?? (canMakeup && 'можно отработать')]
+      .filter(Boolean)
+      .join(' · ')
+  }
+  if (lesson.state === 'absent' && (makeupNote || canMakeup)) {
+    return [said, makeupNote ?? 'можно отработать'].filter(Boolean).join(' · ')
   }
   return said ?? lesson.group
 }

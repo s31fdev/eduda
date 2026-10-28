@@ -1,9 +1,9 @@
 'use server'
 
 import { prisma } from '@repo/db'
-import { unchargeAttendanceTx } from '@/src/features/finances/ledger.server'
 import { getUnpaidLessonsOfStudent } from '@/src/features/finances/unpaid.server'
 import {
+  cancelMakeupTx,
   createMakeupTx,
   type MakeupRuleSource,
   type MakeupScope,
@@ -595,15 +595,14 @@ export const setPublicAbsence = publicAction
       // Предикат выше уже не пустил бы сюда чужую или отмеченную отработку.
       if (!parsedInput.absent && attendance.makeupAttendance) {
         // Предикат сюда отмеченную отработку не пустит, так что возвращать обычно
-        // нечего. Вызов оставлен затем, чтобы послабление предиката не увело урок
+        // нечего. Снятие оставлено затем, чтобы послабление предиката не увело урок
         // из пакета и с баланса вместе с удалённой строкой.
-        await unchargeAttendanceTx(tx, {
-          attendanceId: attendance.makeupAttendance.id,
+        await cancelMakeupTx(tx, {
           organizationId,
+          makeupAttendanceId: attendance.makeupAttendance.id,
           actorUserId: null,
           meta: { removed: 'makeup', by: 'parent' },
         })
-        await tx.attendance.delete({ where: { id: attendance.makeupAttendance.id } })
       }
 
       await tx.attendance.update({
@@ -651,6 +650,8 @@ async function resolveMakeupSource(
   const { group } = source.lesson
   const today = todayYmdInTz(tz)
   return {
+    // Пропуск без предупреждения уже списан: при записи урок за него возвращается.
+    truant: !source.isWarned,
     rule: {
       organizationId,
       studentId,
@@ -662,7 +663,7 @@ async function resolveMakeupSource(
       sameLocation: true,
       dates: { gt: today, lte: addDaysYmd(today, MAKEUP_HORIZON_DAYS) },
     },
-  } satisfies { rule: MakeupRuleSource; scope: MakeupScope }
+  } satisfies { truant: boolean; rule: MakeupRuleSource; scope: MakeupScope }
 }
 
 export const getPublicMakeupOptions = publicAction
@@ -730,7 +731,7 @@ export const createPublicMakeup = publicAction
     )
     await assertAbsenceEnabled(organizationId)
 
-    const { scope } = await resolveMakeupSource(
+    const { truant, scope } = await resolveMakeupSource(
       parsedInput.attendanceId,
       studentId,
       organizationId,
@@ -746,9 +747,11 @@ export const createPublicMakeup = publicAction
         targetLessonId: parsedInput.targetLessonId,
         actorUserId: null,
         scope,
-        // Возврата урока здесь намеренно нет: предупреждённый пропуск ничего не
-        // списал, так что «+1 к балансу» выдал бы бесплатное занятие.
-        creditBalance: false,
+        // Урок возвращается только за прогул: иначе он списался бы дважды, за
+        // пропуск и за отработку. Предупреждённый пропуск ничего не списал, и
+        // «+1 к балансу» выдал бы бесплатное занятие. Снять штраф за то, что не
+        // предупредили, родителю разрешила школа (27.10.2026).
+        creditBalance: truant,
         parentMarkedAt: new Date(),
       }),
     )
@@ -776,18 +779,14 @@ export const cancelPublicMakeup = publicAction
     const blocker = parentAbsenceBlocker(makeup, makeup.lesson, schoolNow(tz), 'cancelMakeup')
     if (blocker) throw new ConflictError(blocker)
 
-    // Сам пропуск остаётся предупреждённым — родитель отказался от даты, а не от пропуска.
-    await prisma.$transaction(async (tx) => {
-      // Предикат выше пускает сюда только неотмеченную отработку, так что снимать
-      // обычно нечего. Вызов стоит по той же причине, что и в `unmarkPublicAbsence`:
-      // строка посещаемости удаляется, а журнал её переживает без FK, и послабление
-      // предиката увело бы урок из пакета и с баланса молча.
-      await unchargeAttendanceTx(tx, {
-        attendanceId: makeup.id,
+    // Сам пропуск остаётся как был — родитель отказался от даты, а не от пропуска.
+    // Прогул, за который при записи вернули урок, `cancelMakeupTx` списывает снова.
+    await prisma.$transaction((tx) =>
+      cancelMakeupTx(tx, {
         organizationId,
+        makeupAttendanceId: makeup.id,
         actorUserId: null,
         meta: { removed: 'makeup', by: 'parent' },
-      })
-      await tx.attendance.delete({ where: { id: makeup.id } })
-    })
+      }),
+    )
   })

@@ -272,4 +272,59 @@ blocked(
   'отменить отработку у обычной записи',
 )
 
+// ─── Отработка прошедшего пропуска: не старше 30 дней ───────────────
+
+const RECENT = '2026-07-08' // ровно 30 дней до TODAY
+const STALE = '2026-07-07' // 31 день
+const truant: BlockableAttendance = { ...unmarked, status: 'ABSENT', isWarned: false }
+
+ok(
+  parentAbsenceBlocker(parentWarned, activeLesson(RECENT), NOW, 'makeup'),
+  'прошедший пропуск с предупреждением, ровно 30 дней',
+)
+ok(
+  parentAbsenceBlocker(
+    { ...parentWarned, parentMarkedAt: null },
+    activeLesson(RECENT),
+    NOW,
+    'makeup',
+  ),
+  'прошедший пропуск, отмеченный школой',
+)
+ok(parentAbsenceBlocker(truant, activeLesson(RECENT), NOW, 'makeup'), 'прошедший прогул')
+ok(
+  parentAbsenceBlocker(parentWarned, activeLesson(TODAY, '18:00'), at('17:45'), 'makeup'),
+  'после срока, но до начала занятия',
+)
+blocked(parentAbsenceBlocker(truant, activeLesson(STALE), NOW, 'makeup'), 'пропуск старше 30 дней')
+blocked(
+  parentAbsenceBlocker({ ...truant, isTrial: true }, activeLesson(RECENT), NOW, 'makeup'),
+  'прошедшее пробное',
+)
+blocked(
+  parentAbsenceBlocker(
+    { ...truant, makeupAttendance: { status: 'UNSPECIFIED', parentMarkedAt: null } },
+    activeLesson(RECENT),
+    NOW,
+    'makeup',
+  ),
+  'у прошедшего пропуска уже есть отработка',
+)
+blocked(
+  parentAbsenceBlocker({ ...unmarked, status: 'PRESENT' }, activeLesson(RECENT), NOW, 'makeup'),
+  'посещённое занятие',
+)
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(RECENT), NOW, 'makeup'),
+  'неотмеченное прошедшее',
+)
+blocked(
+  parentAbsenceBlocker(truant, { date: RECENT, time: '18:00', status: 'CANCELLED' }, NOW, 'makeup'),
+  'отменённый урок',
+)
+blocked(
+  parentAbsenceBlocker(parentWarned, activeLesson(RECENT), NOW, 'unmark'),
+  'снять прошедшую отметку',
+)
+
 console.log('check-parent-absence: OK')

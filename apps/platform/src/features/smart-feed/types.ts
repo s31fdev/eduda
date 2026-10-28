@@ -128,6 +128,8 @@ export interface ParentMarkedAbsenceAlert {
   lessonId: number
   lessonDate: string
   lessonTime: string
+  /** Пропуск уже прошёл: родитель записал отработку задним числом. */
+  past: boolean
   /** Занятие-отработка, если родитель уже выбрал дату. */
   makeupLessonId: number | null
   makeupDate: string | null

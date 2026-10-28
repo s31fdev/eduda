@@ -27,14 +27,19 @@ export async function collectParentMarkedAbsences({
       organizationId,
       // `parentMarkedAt` проставляется только кабинетом родителя и очищается, как
       // только статус трогает сотрудник, — то есть это ровно «школа ещё не смотрела».
-      // Пропуск, отмеченный школой, попадает сюда своей отработкой: её записал родитель.
       OR: [
-        { parentMarkedAt: { not: null } },
-        { makeupAttendance: { is: { parentMarkedAt: { not: null } } } },
+        { parentMarkedAt: { not: null }, lesson: { date: { gte: today } } },
+        // Отработку записал родитель — повод, пока она впереди. Так сюда попадают и
+        // пропуск, отмеченный школой, и уже прошедший пропуск, даже прогул.
+        {
+          makeupAttendance: {
+            is: { parentMarkedAt: { not: null }, lesson: { date: { gte: today } } },
+          },
+        },
       ],
       // Сама запись-отработка не отдельный повод: она видна внутри алерта пропуска.
       makeupForAttendanceId: null,
-      lesson: { status: 'ACTIVE', date: { gte: today } },
+      lesson: { status: 'ACTIVE' },
     },
     select: {
       id: true,
@@ -90,6 +95,7 @@ export async function collectParentMarkedAbsences({
       lessonId: m.lesson.id,
       lessonDate: m.lesson.date,
       lessonTime: m.lesson.time,
+      past: m.lesson.date < today,
       makeupLessonId: m.makeupAttendance?.lesson.id ?? null,
       makeupDate: m.makeupAttendance?.lesson.date ?? null,
       makeupTime: m.makeupAttendance?.lesson.time ?? null,

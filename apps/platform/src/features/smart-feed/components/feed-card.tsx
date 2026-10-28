@@ -60,7 +60,9 @@ function ParentMarkedAbsenceCard({
           >
             {alert.groupName}
           </Link>
-          <span className="ml-1">не придёт {formattedDate}</span>
+          <span className="ml-1">
+            {alert.past ? 'пропуск' : 'не придёт'} {formattedDate}
+          </span>
           <span className={alert.makeupDate ? 'ml-1' : 'text-warning ml-1'}>
             ·{' '}
             {alert.makeupDate

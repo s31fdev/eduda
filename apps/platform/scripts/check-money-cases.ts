@@ -26,6 +26,7 @@ import {
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
 import {
+  cancelMakeupTx,
   createMakeupTx,
   type MakeupScope,
   rescheduleMakeupTx,
@@ -900,6 +901,69 @@ async function main() {
           await assert.rejects(bookFor(far, { sameLocation: true }), refused(/не подходит/))
           await bookFor(far)
           ok('другой филиал: родителю отказ, менеджеру можно')
+        }
+
+        console.log('\nОтработка из кабинета')
+
+        {
+          const s = await scene('Прогул из кабинета')
+          const p = await pay(s.walletId, s.studentId, '2026-09-01', 10_000, 10)
+          const missed = await visit({ studentId: s.studentId })
+          await mark(missed, AttendanceStatus.ABSENT, false)
+          assert.equal(await balanceOf(s.walletId), 9)
+
+          // То же, что делает `createPublicMakeup` за прогул.
+          const { id: makeup } = await createMakeupTx(tx, {
+            organizationId,
+            sourceAttendanceId: missed,
+            targetLessonId: await lessonIn(groupTwo.id),
+            actorUserId: null,
+            scope: { sameLocation: true },
+            creditBalance: true,
+            parentMarkedAt: new Date(),
+          })
+          assert.equal(await charged(missed), false)
+          assert.equal(await balanceOf(s.walletId), 10)
+          assert.equal(await remainingOf(p.id), 10)
+          ok('запись за прогул возвращает урок в пакет и на баланс')
+
+          // То же, что делает `cancelPublicMakeup`.
+          await cancelMakeupTx(tx, {
+            organizationId,
+            makeupAttendanceId: makeup,
+            actorUserId: null,
+          })
+          assert.equal(await tx.attendance.count({ where: { id: makeup } }), 0)
+          assert.equal(await charged(missed), true)
+          assert.equal(await balanceOf(s.walletId), 9)
+          assert.equal(await remainingOf(p.id), 9)
+          ok('отмена записи за прогул списывает его сразу, а не оставляет ждать оплаты')
+        }
+
+        {
+          const s = await scene('Предупреждённый из кабинета')
+          await pay(s.walletId, s.studentId, '2026-09-01', 10_000, 10)
+          const missed = await visit({ studentId: s.studentId })
+          await mark(missed, AttendanceStatus.ABSENT, true)
+
+          const { id: makeup } = await createMakeupTx(tx, {
+            organizationId,
+            sourceAttendanceId: missed,
+            targetLessonId: await lessonIn(groupTwo.id),
+            actorUserId: null,
+            scope: { sameLocation: true },
+            creditBalance: false,
+            parentMarkedAt: new Date(),
+          })
+          assert.equal(await balanceOf(s.walletId), 10)
+          await cancelMakeupTx(tx, {
+            organizationId,
+            makeupAttendanceId: makeup,
+            actorUserId: null,
+          })
+          assert.equal(await charged(missed), false)
+          assert.equal(await balanceOf(s.walletId), 10)
+          ok('запись и отмена за предупреждённый пропуск денег не двигают')
         }
 
         console.log('\nНесколько кошельков и разовые визиты')

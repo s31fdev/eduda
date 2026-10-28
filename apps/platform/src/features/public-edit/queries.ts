@@ -200,6 +200,10 @@ export const useCreatePublicMakeupMutation = () => {
           variables.attendanceId,
         ),
       })
+      // За прогул урок вернулся на баланс — карточка оплаты должна это показать.
+      queryClient.invalidateQueries({
+        queryKey: publicEditKeys.finances(variables.token, variables.studentId),
+      })
       return queryClient.invalidateQueries({
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
       })
@@ -213,10 +217,15 @@ export const useCancelPublicMakeupMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (values: CancelPublicMakeupSchemaType) => unwrapAction(cancelPublicMakeup(values)),
-    onSuccess: (_data, variables) =>
+    onSuccess: (_data, variables) => {
+      // Прогул без отработки снова списан — баланс тоже изменился.
       queryClient.invalidateQueries({
+        queryKey: publicEditKeys.finances(variables.token, variables.studentId),
+      })
+      return queryClient.invalidateQueries({
         queryKey: publicEditKeys.groups(variables.token, variables.studentId),
-      }),
+      })
+    },
     onError: (error) =>
       toast.error(errorText(error, 'Не удалось отменить отработку. Попробуйте ещё раз.')),
   })

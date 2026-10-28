@@ -24,9 +24,11 @@ import {
   RotateCcw,
   TriangleAlert,
   Users,
+  X,
 } from 'lucide-react'
 import { useState } from 'react'
 import {
+  absenceCutoffPassed,
   absenceDeadline,
   type CabinetLesson,
   parentAbsenceBlocker,
@@ -117,7 +119,7 @@ export function AbsenceDrawer({
               lesson={lesson}
               onBack={() => setPicking(false)}
             />
-          ) : lesson.state === 'warned' ? (
+          ) : lesson.state === 'warned' || lesson.state === 'absent' ? (
             <DoneStep
               token={token}
               studentId={studentId}
@@ -243,19 +245,45 @@ function DoneStep({
     canMarkAbsence && makeup != null && blocker(makeup, now, 'cancelMakeup') === null
   // Отметку школы родитель не снимет — говорим это словами, а не только прячем кнопку.
   const byParent = lesson.att.parentMarkedAt != null
+  // Прошедший пропуск открывают, чтобы отработать: прогул — тоже.
+  const past = absenceCutoffPassed(lesson, now)
+  const truant = lesson.state === 'absent'
 
   return (
     <>
       <DrawerHeader className="items-center gap-3 pt-6 pb-5 text-center md:text-center">
-        <span className="bg-success/15 text-success flex size-14 items-center justify-center rounded-full">
-          <Check className="size-7" strokeWidth={2.5} />
+        <span
+          className={cn(
+            'flex size-14 items-center justify-center rounded-full',
+            truant ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success',
+          )}
+        >
+          {truant ? (
+            <X className="size-7" strokeWidth={2.5} />
+          ) : (
+            <Check className="size-7" strokeWidth={2.5} />
+          )}
         </span>
         <DrawerTitle className="text-xl font-semibold tracking-tight">
-          {byParent ? 'Школа предупреждена' : 'Школа знает о пропуске'}
+          {truant
+            ? 'Пропуск без предупреждения'
+            : past
+              ? 'Пропуск с предупреждением'
+              : byParent
+                ? 'Школа предупреждена'
+                : 'Школа знает о пропуске'}
         </DrawerTitle>
         <DrawerDescription className="text-base">
-          {formatDate(lesson.date)} {childName} не придёт. Занятие не спишется с баланса.
-          {!byParent && ' Отметку поставила школа — снять её может только администратор.'}
+          {truant ? (
+            `${formatDate(lesson.date)} — занятие пропущено, школу не предупредили.`
+          ) : past ? (
+            `${formatDate(lesson.date)} — пропуск с предупреждением. Занятие не списано.`
+          ) : (
+            <>
+              {formatDate(lesson.date)} {childName} не придёт. Занятие не спишется с баланса.
+              {!byParent && ' Отметку поставила школа — снять её может только администратор.'}
+            </>
+          )}
         </DrawerDescription>
       </DrawerHeader>
 
@@ -450,8 +478,10 @@ function MakeupStep({
           {!empty && (
             <p className="bg-warning/10 text-foreground mt-2 flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-sm leading-relaxed">
               <TriangleAlert className="text-warning mt-0.5 size-4 shrink-0" />
-              Отработка списывается как обычное занятие — даже если на неё не прийти. Предупредить о
-              пропуске отработки нельзя.
+              {/* За прогул урок возвращается при записи — об этом надо сказать до неё. */}
+              {lesson.state === 'absent'
+                ? `Занятие ${formatDate(lesson.date)} вернётся на баланс и спишется на отработке — даже если на неё не прийти. Предупредить о пропуске отработки нельзя.`
+                : 'Отработка списывается как обычное занятие — даже если на неё не прийти. Предупредить о пропуске отработки нельзя.'}
             </p>
           )}
         </div>

@@ -261,6 +261,9 @@ export function schoolNow(tz: string): SchoolNow {
 /** За сколько минут до начала родитель ещё может предупредить о пропуске или передумать. */
 export const ABSENCE_CUTOFF_MINUTES = 30
 
+/** Насколько давний пропуск родитель может отработать сам — по дате занятия (решение 27.10.2026). */
+export const MAKEUP_PAST_DAYS = 30
+
 /**
  * Момент, после которого отметку меняет только школа: начало урока минус
  * `ABSENCE_CUTOFF_MINUTES`. Время диапазоном («16:00-17:00») — по началу. `null`,
@@ -418,13 +421,35 @@ export function parentAbsenceBlocker(
 ): string | null {
   if (lesson.status === 'CANCELLED') return 'Занятие отменено школой.'
 
+  const isMakeupRow = att.makeupForAttendanceId != null
+
+  // Отработку срок «за полчаса до начала» не ограничивает: записаться можно и за
+  // прошедший пропуск, если ему не больше `MAKEUP_PAST_DAYS`.
+  if (action === 'makeup') {
+    // Отработка — вторая попытка, третьей нет.
+    if (isMakeupRow) return 'Это отработка. Отработать её ещё раз нельзя.'
+    if (att.status !== 'ABSENT') return 'Записаться на отработку можно только за пропуск.'
+    if (absenceCutoffPassed(lesson, now)) {
+      // Прошедший пропуск — с предупреждением или без, кто бы его ни отметил.
+      if (lesson.date < addDaysYmd(now.date, -MAKEUP_PAST_DAYS)) {
+        return `Отработать можно пропуск не старше ${MAKEUP_PAST_DAYS} дней. Позже — свяжитесь со школой.`
+      }
+    } else if (!att.isWarned) {
+      // Будущий — только с предупреждением, кто бы его ни отметил: школа ставит
+      // такой пропуск и со слов родителя по телефону.
+      return 'Записаться на отработку можно только за пропуск, о котором предупредили.'
+    }
+    // За пропуск пробного не платят, а отработка списывается как обычное занятие.
+    if (att.isTrial) return 'Пробное занятие не отрабатывается.'
+    if (att.makeupAttendance != null) return 'Отработка уже назначена.'
+    return null
+  }
+
   // Срок — за полчаса до начала: позже преподаватель уже рассчитывает на
   // ребёнка, поэтому такие отмены идут через школу.
   if (absenceCutoffPassed(lesson, now)) {
     return `Отметить можно не позднее чем за ${ABSENCE_CUTOFF_MINUTES} минут до начала занятия. Позже — свяжитесь со школой.`
   }
-
-  const isMakeupRow = att.makeupForAttendanceId != null
 
   if (action === 'cancelMakeup') {
     if (!isMakeupRow) return 'Это занятие не является отработкой.'
@@ -440,18 +465,6 @@ export function parentAbsenceBlocker(
   if (action === 'mark') {
     // Не перезаписываем отметку преподавателя — он видел, кто пришёл, родитель нет.
     if (att.status !== 'UNSPECIFIED') return 'Занятие уже отмечено школой.'
-    return null
-  }
-
-  // Отработка — за любой пропуск с предупреждением, кто бы его ни отметил: школа
-  // ставит такой пропуск и со слов родителя по телефону.
-  if (action === 'makeup') {
-    if (att.status !== 'ABSENT' || !att.isWarned) {
-      return 'Записаться на отработку можно только за пропуск, о котором предупредили.'
-    }
-    // За пропуск пробного не платят, а отработка списывается как обычное занятие.
-    if (att.isTrial) return 'Пробное занятие не отрабатывается.'
-    if (att.makeupAttendance != null) return 'Отработка уже назначена.'
     return null
   }
 
@@ -479,7 +492,8 @@ export function parentAbsenceBlocker(
  * отметку пропусков (`canMarkAbsence`) проверяет вызывающий.
  */
 export function absenceActionable(lesson: CabinetLesson, now: SchoolNow) {
-  if (lesson.state !== 'warned') return false
+  // Прогул тоже: за прошедший пропуск без предупреждения можно записаться на отработку.
+  if (lesson.state !== 'warned' && lesson.state !== 'absent') return false
   const ok = (l: CabinetLesson, action: ParentAttendanceAction) =>
     parentAbsenceBlocker(l.att, l, now, action) === null
   return (

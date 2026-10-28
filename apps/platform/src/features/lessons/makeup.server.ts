@@ -2,7 +2,7 @@ import type { Prisma } from '@repo/db'
 import { StudentLessonsBalanceChangeReason } from '@repo/db/enums'
 // Относительные пути, а не алиас: модуль запускают сверки через tsx.
 import { ConflictError, NotFoundError } from '../../lib/error'
-import { unchargeAttendanceTx } from '../finances/ledger.server'
+import { unchargeAttendancesTx, unchargeAttendanceTx } from '../finances/ledger.server'
 
 /**
  * Отработки: куда можно записать, сама запись и её перенос — одни для платформы
@@ -180,11 +180,37 @@ export async function createMakeupTx(
       organizationId: args.organizationId,
       actorUserId: args.actorUserId,
       reason: StudentLessonsBalanceChangeReason.MAKEUP_GRANTED,
-      meta: { makeupAttendanceId: makeup.id },
+      meta: { makeupAttendanceId: makeup.id, ...(args.parentMarkedAt && { by: 'parent' }) },
     })
   }
 
   return makeup
+}
+
+/**
+ * Снять отработку. Списание с неё возвращается в пакет, а пропуск, за который при
+ * записи вернули урок, снова списывается: иначе прогул остался бы без списания, а
+ * баланс — с лишним уроком до ближайшей оплаты. Всё это делает
+ * `unchargeAttendancesTx`: через неё строки снимают и во всех остальных местах.
+ */
+export async function cancelMakeupTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    organizationId: number
+    makeupAttendanceId: number
+    actorUserId: number | null
+    meta?: Record<string, unknown>
+  },
+) {
+  await unchargeAttendancesTx(tx, {
+    where: { id: args.makeupAttendanceId },
+    organizationId: args.organizationId,
+    actorUserId: args.actorUserId,
+    meta: args.meta,
+  })
+  await tx.attendance.delete({
+    where: { id: args.makeupAttendanceId, organizationId: args.organizationId },
+  })
 }
 
 /**
