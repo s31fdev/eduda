@@ -23,12 +23,14 @@ import {
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import { aheadChip, PrivacyNote, StateChip } from './cabinet-ui'
+import { PaidLessonsCard, paidRows } from './paid-lessons-card'
 import { ShopCard } from './shop-card'
 
 export default function CabinetHome({ token }: { token: string }) {
   const {
     studentId,
     children,
+    childQuery,
     isPending: childPending,
     isError: childError,
   } = useSelectedChild(token)
@@ -69,13 +71,16 @@ export default function CabinetHome({ token }: { token: string }) {
   // ближайшее занятие и проверки в кабинете смотрят на одни и те же часы.
   const { today, now, canMarkAbsence } = groups.data
   const lessons = cabinetLessons(groups.data.groups)
-  const next = splitByNow(lessons, now).ahead.find((lesson) => lesson.state !== 'cancelled')
+  const { ahead } = splitByNow(lessons, now)
+  const next = ahead.find((lesson) => lesson.state !== 'cancelled')
+  const paid = paidRows(finances.data, lessons, ahead, today)
   const child = children.find((item) => item.id === studentId)!
   const shop = finances.data.shop
+  const aside = paid.length > 0 || shop != null
 
   return (
-    // Пока на главной только ближайшее занятие и магазин (решение 28.10.2026):
-    // остаток оплаченного — в «Оплате», посещаемость и расписание — в «Занятиях».
+    // На главной ближайшее занятие, оплаченные занятия и магазин (решения 28 и
+    // 29.10.2026): посещаемость и расписание — в «Занятиях».
     // `items-start` — карточки не тянутся за соседней по высоте.
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       {/* На десктопе под именем — чем ребёнок занят; на телефоне это есть в карточках. */}
@@ -86,8 +91,8 @@ export default function CabinetHome({ token }: { token: string }) {
           .join('; ')}
       </p>
 
-      {/* Без магазина правая колонка пустая — занятие тогда во всю ширину. */}
-      <div className={cn(!shop && 'md:col-span-2')}>
+      {/* Правая колонка пустая — занятие тогда во всю ширину. */}
+      <div className={cn(!aside && 'md:col-span-2')}>
         {next ? (
           <NextLessonCard
             lesson={next}
@@ -103,8 +108,16 @@ export default function CabinetHome({ token }: { token: string }) {
         )}
       </div>
 
-      {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
-      {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
+      {aside && (
+        // На телефоне — сразу под занятием: оплата важнее магазина.
+        <div className="flex flex-col gap-4 md:gap-6">
+          {paid.length > 0 && (
+            <PaidLessonsCard rows={paid} href={`/${token}/finances${childQuery}`} />
+          )}
+          {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
+          {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
+        </div>
+      )}
 
       <div className="md:col-span-2">
         <PrivacyNote many={children.length > 1} />
@@ -208,7 +221,10 @@ function HomeSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       <Skeleton className="h-64 rounded-3xl" />
-      <Skeleton className="h-52 rounded-2xl" />
+      <div className="flex flex-col gap-4 md:gap-6">
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-52 rounded-2xl" />
+      </div>
     </div>
   )
 }

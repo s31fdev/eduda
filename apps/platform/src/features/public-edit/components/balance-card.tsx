@@ -1,6 +1,5 @@
 import { cn } from '@/src/lib/utils'
-import { ChevronRight, TriangleAlert } from 'lucide-react'
-import Link from 'next/link'
+import { TriangleAlert } from 'lucide-react'
 import {
   type CabinetLesson,
   dayLabel,
@@ -33,13 +32,10 @@ export function BalanceCard({
   data,
   ahead,
   today,
-  moreHref,
 }: {
   data: FinancesData
   ahead: CabinetLesson[]
   today: string
-  /** Ссылка «Подробнее об оплате» — только на главной. */
-  moreHref?: string
 }) {
   const balance = paidLessonsLeft(data)
   const unpaid = data.unpaid.length
@@ -167,16 +163,6 @@ export function BalanceCard({
       )}
 
       {text && <p className="text-foreground/80 text-sm leading-relaxed">{text}</p>}
-
-      {moreHref && (
-        <Link
-          href={moreHref}
-          className="text-primary inline-flex min-h-6 items-center gap-1 self-start text-sm font-semibold"
-        >
-          Подробнее об оплате
-          <ChevronRight className="size-4" />
-        </Link>
-      )}
     </section>
   )
 }
