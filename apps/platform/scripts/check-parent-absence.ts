@@ -36,6 +36,7 @@ const activeLesson = (date: string, time = '18:00'): BlockableLesson => ({
 const unmarked: BlockableAttendance = {
   status: 'UNSPECIFIED',
   isWarned: null,
+  isTrial: false,
   parentMarkedAt: null,
   makeupForAttendanceId: null,
   makeupAttendance: null,
@@ -45,6 +46,7 @@ const unmarked: BlockableAttendance = {
 const parentWarned: BlockableAttendance = {
   status: 'ABSENT',
   isWarned: true,
+  isTrial: false,
   parentMarkedAt: new Date('2026-08-05T10:00:00Z'),
   makeupForAttendanceId: null,
   makeupAttendance: null,
@@ -144,14 +146,33 @@ blocked(
   ),
   'снять отметку школы',
 )
-blocked(
+// Отработку родитель записывает и за пропуск, который отметила школа: такой
+// пропуск ставят и со слов родителя по телефону.
+ok(
   parentAbsenceBlocker(
     { ...parentWarned, parentMarkedAt: null },
     activeLesson(FUTURE),
     NOW,
     'makeup',
   ),
-  'отработка за отметку школы',
+  'отработка за пропуск, отмеченный школой',
+)
+blocked(
+  parentAbsenceBlocker(
+    { ...unmarked, status: 'ABSENT', isWarned: false },
+    activeLesson(FUTURE),
+    NOW,
+    'makeup',
+  ),
+  'отработка за пропуск без предупреждения',
+)
+blocked(
+  parentAbsenceBlocker({ ...parentWarned, isTrial: true }, activeLesson(FUTURE), NOW, 'makeup'),
+  'отработка за пробное',
+)
+blocked(
+  parentAbsenceBlocker(unmarked, activeLesson(FUTURE), NOW, 'makeup'),
+  'отработка без пропуска',
 )
 blocked(
   parentAbsenceBlocker(
@@ -205,6 +226,7 @@ blocked(
 const makeupRow: BlockableAttendance = {
   status: 'UNSPECIFIED',
   isWarned: null,
+  isTrial: false,
   parentMarkedAt: new Date('2026-08-06T10:00:00Z'),
   makeupForAttendanceId: 42,
   makeupAttendance: null,

@@ -382,6 +382,7 @@ export type ParentAttendanceAction = 'mark' | 'unmark' | 'makeup' | 'cancelMakeu
 export type BlockableAttendance = {
   status: string
   isWarned: boolean | null
+  isTrial: boolean
   parentMarkedAt: Date | string | null
   makeupForAttendanceId: number | null
   /** Назначенная отработка за этот пропуск (запись на другом уроке). */
@@ -442,13 +443,20 @@ export function parentAbsenceBlocker(
     return null
   }
 
-  // unmark / makeup — только над собственной отметкой родителя.
-  if (att.status !== 'ABSENT' || !att.isWarned || att.parentMarkedAt == null) return STAFF_MARK
-
+  // Отработка — за любой пропуск с предупреждением, кто бы его ни отметил: школа
+  // ставит такой пропуск и со слов родителя по телефону.
   if (action === 'makeup') {
+    if (att.status !== 'ABSENT' || !att.isWarned) {
+      return 'Записаться на отработку можно только за пропуск, о котором предупредили.'
+    }
+    // За пропуск пробного не платят, а отработка списывается как обычное занятие.
+    if (att.isTrial) return 'Пробное занятие не отрабатывается.'
     if (att.makeupAttendance != null) return 'Отработка уже назначена.'
     return null
   }
+
+  // unmark — только над собственной отметкой родителя.
+  if (att.status !== 'ABSENT' || !att.isWarned || att.parentMarkedAt == null) return STAFF_MARK
 
   // unmark: снятие отметки уносит с собой отработку, поэтому отработку школы
   // или уже отмеченную преподавателем родитель снять не может.
@@ -462,4 +470,21 @@ export function parentAbsenceBlocker(
   }
 
   return null
+}
+
+/**
+ * Есть ли родителю что сделать с пропуском: снять свою отметку, записаться на
+ * отработку или отменить свою отработку. По ней кнопка открывает шторку и на
+ * главной, и в «Посещаемости» — иначе два места разойдутся. Выключенную школой
+ * отметку пропусков (`canMarkAbsence`) проверяет вызывающий.
+ */
+export function absenceActionable(lesson: CabinetLesson, now: SchoolNow) {
+  if (lesson.state !== 'warned') return false
+  const ok = (l: CabinetLesson, action: ParentAttendanceAction) =>
+    parentAbsenceBlocker(l.att, l, now, action) === null
+  return (
+    ok(lesson, 'unmark') ||
+    ok(lesson, 'makeup') ||
+    (lesson.makeup != null && ok(lesson.makeup, 'cancelMakeup'))
+  )
 }

@@ -6,10 +6,10 @@ import { getGroupName } from '@/src/lib/utils'
 import { ALERT_TYPE, type ParentMarkedAbsenceAlert } from './types'
 
 /**
- * Пропуски, о которых родитель предупредил из кабинета и которые школа ещё не
- * трогала. Отдельный модуль, а не тело экшена, чтобы запрос можно было прогнать
- * без сессии (`authAction` тянет `headers()`), — тот же приём, что и
- * `finances/chargeable.server.ts`.
+ * Пропуски, о которых родитель предупредил из кабинета, и пропуски, на которые он
+ * сам записал ребёнка на отработку, — пока школа их не трогала. Отдельный модуль,
+ * а не тело экшена, чтобы запрос можно было прогнать без сессии (`authAction`
+ * тянет `headers()`), — тот же приём, что и `finances/chargeable.server.ts`.
  */
 export async function collectParentMarkedAbsences({
   organizationId,
@@ -25,9 +25,13 @@ export async function collectParentMarkedAbsences({
   const marked = await prisma.attendance.findMany({
     where: {
       organizationId,
-      // Проставляется только кабинетом родителя и очищается, как только статус
-      // трогает сотрудник, — то есть это ровно «школа ещё не смотрела».
-      parentMarkedAt: { not: null },
+      // `parentMarkedAt` проставляется только кабинетом родителя и очищается, как
+      // только статус трогает сотрудник, — то есть это ровно «школа ещё не смотрела».
+      // Пропуск, отмеченный школой, попадает сюда своей отработкой: её записал родитель.
+      OR: [
+        { parentMarkedAt: { not: null } },
+        { makeupAttendance: { is: { parentMarkedAt: { not: null } } } },
+      ],
       // Сама запись-отработка не отдельный повод: она видна внутри алерта пропуска.
       makeupForAttendanceId: null,
       lesson: { status: 'ACTIVE', date: { gte: today } },

@@ -7,6 +7,7 @@ import { Skeleton } from '@repo/ui/components/skeleton'
 import { Bell, BookOpen, Check, ChevronRight, MapPin, UserRound, X } from 'lucide-react'
 import Link from 'next/link'
 import {
+  absenceActionable,
   absenceCutoffPassed,
   attendanceOf,
   type CabinetLesson,
@@ -209,7 +210,7 @@ function NextLessonCard({
 }) {
   const today = now.date
   const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
-  const warnedByParent = lesson.state === 'warned' && lesson.att.parentMarkedAt != null
+  const canChange = canMarkAbsence && absenceActionable(lesson, now)
 
   // Пояснение — только там, где без него непонятно, почему кнопки нет или что
   // будет с деньгами. Срок «можно до …» не пишем: раз кнопка есть, ещё можно.
@@ -260,13 +261,18 @@ function NextLessonCard({
             {lesson.location}
           </span>
         </span>
-        {(canMark || warnedByParent) && (
+        {(canMark || canChange) && (
           <Button
             variant="secondary"
             className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold md:w-60 md:shrink-0"
             onClick={onAbsence}
           >
-            {canMark ? 'Не сможем прийти' : 'Изменить отметку'}
+            {/* Отметку школы родитель не снимет, ему остаётся только отработка. */}
+            {canMark
+              ? 'Не сможем прийти'
+              : lesson.att.parentMarkedAt != null
+                ? 'Изменить отметку'
+                : 'Отработка'}
           </Button>
         )}
       </div>

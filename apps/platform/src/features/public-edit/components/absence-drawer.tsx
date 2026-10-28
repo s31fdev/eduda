@@ -117,7 +117,7 @@ export function AbsenceDrawer({
               lesson={lesson}
               onBack={() => setPicking(false)}
             />
-          ) : lesson.state === 'warned' && lesson.att.parentMarkedAt != null ? (
+          ) : lesson.state === 'warned' ? (
             <DoneStep
               token={token}
               studentId={studentId}
@@ -241,6 +241,8 @@ function DoneStep({
   // предикату отдаём её, а не пропуск.
   const canCancelMakeup =
     canMarkAbsence && makeup != null && blocker(makeup, now, 'cancelMakeup') === null
+  // Отметку школы родитель не снимет — говорим это словами, а не только прячем кнопку.
+  const byParent = lesson.att.parentMarkedAt != null
 
   return (
     <>
@@ -249,10 +251,11 @@ function DoneStep({
           <Check className="size-7" strokeWidth={2.5} />
         </span>
         <DrawerTitle className="text-xl font-semibold tracking-tight">
-          Школа предупреждена
+          {byParent ? 'Школа предупреждена' : 'Школа знает о пропуске'}
         </DrawerTitle>
         <DrawerDescription className="text-base">
           {formatDate(lesson.date)} {childName} не придёт. Занятие не спишется с баланса.
+          {!byParent && ' Отметку поставила школа — снять её может только администратор.'}
         </DrawerDescription>
       </DrawerHeader>
 

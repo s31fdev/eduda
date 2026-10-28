@@ -8,6 +8,7 @@ import { BookOpen, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import {
   ABSENCE_CUTOFF_MINUTES,
+  absenceActionable,
   attendanceOf,
   type CabinetLesson,
   cabinetLessons,
@@ -145,12 +146,7 @@ export default function AttendanceSection({ token }: { token: string }) {
               // Строку пропуска (и его отработки) открываем в шторку, если с
               // отметкой ещё можно что-то сделать: снять, записать или отменить отработку.
               const source = lesson.makeupFor ?? lesson
-              const opens =
-                source.state === 'warned' &&
-                source.att.parentMarkedAt != null &&
-                (can(source, 'unmark') ||
-                  can(source, 'makeup') ||
-                  (source.makeup != null && can(source.makeup, 'cancelMakeup')))
+              const opens = canMarkAbsence && absenceActionable(source, now)
 
               const line = (
                 <LessonLine
