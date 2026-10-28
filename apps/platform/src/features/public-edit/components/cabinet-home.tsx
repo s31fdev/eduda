@@ -23,7 +23,7 @@ import {
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import { aheadChip, PrivacyNote, StateChip } from './cabinet-ui'
-import { PaidLessonsCard, paidRows } from './paid-lessons-card'
+import { PaidLessonsSection, paidRows } from './paid-lessons-card'
 import { ShopCard } from './shop-card'
 
 export default function CabinetHome({ token }: { token: string }) {
@@ -112,7 +112,7 @@ export default function CabinetHome({ token }: { token: string }) {
         // На телефоне — сразу под занятием: оплата важнее магазина.
         <div className="flex flex-col gap-4 md:gap-6">
           {paid.length > 0 && (
-            <PaidLessonsCard rows={paid} href={`/${token}/finances${childQuery}`} />
+            <PaidLessonsSection rows={paid} href={`/${token}/finances${childQuery}`} />
           )}
           {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
           {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
@@ -222,8 +222,8 @@ function HomeSkeleton() {
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       <Skeleton className="h-64 rounded-3xl" />
       <div className="flex flex-col gap-4 md:gap-6">
-        <Skeleton className="h-18 rounded-2xl" />
-        <Skeleton className="h-52 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     </div>
   )

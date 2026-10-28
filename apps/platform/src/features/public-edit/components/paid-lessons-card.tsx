@@ -11,7 +11,7 @@ import {
   plural,
 } from '../lib'
 import { type CabinetWallet, walletLabel } from './balance-card'
-import { ListCard } from './cabinet-ui'
+import { SectionTitle } from './cabinet-ui'
 
 type FinancesData = NonNullable<Awaited<ReturnType<typeof getPublicStudentFinances>>['data']>
 
@@ -103,56 +103,59 @@ export function paidRows(
 }
 
 /**
- * Оплаченные занятия на главной: строка на кошелёк, одна она или их пять. В кольце —
+ * «Балансы» на главной: карточка на кошелёк, одна она или их пять. В кольце —
  * сколько оплаченных занятий осталось, дуга — та же величина долей абонемента.
  * Жёлтые дуга и цифра — занятия кончаются; оплаченных нет — пустое кольцо и
- * красный ноль. Каждая строка ведёт в «Оплату».
+ * красный ноль. Каждая карточка ведёт в «Оплату».
  */
-export function PaidLessonsCard({ rows, href }: { rows: PaidRow[]; href: string }) {
+export function PaidLessonsSection({ rows, href }: { rows: PaidRow[]; href: string }) {
   return (
-    <ListCard aria-label="Оплаченные занятия">
-      {rows.map((row) => (
-        <li key={row.id}>
-          <Link href={href} className="flex items-center gap-3.5 px-4 py-3">
-            <Ring row={row} />
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-base font-semibold">{row.label}</span>
-              {/* Цифра в кольце скрыта от экранного диктора — здесь она словами. */}
-              <span className="sr-only">
-                Оплачено {row.balance} {lessonsWord(row.balance)}.
+    <section aria-labelledby="balances-title" className="flex flex-col gap-2.5">
+      <SectionTitle id="balances-title">Балансы</SectionTitle>
+      <ul className="flex flex-col gap-2.5">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <Link href={href} className="bg-card flex items-center gap-4 rounded-2xl border p-4">
+              <Ring row={row} />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-base font-semibold">{row.label}</span>
+                {/* Цифра в кольце скрыта от экранного диктора — здесь она словами. */}
+                <span className="sr-only">
+                  Оплачено {row.balance} {lessonsWord(row.balance)}.
+                </span>
+                {row.sub && <span className="text-muted-foreground text-sm">{row.sub}</span>}
               </span>
-              {row.sub && <span className="text-muted-foreground text-sm">{row.sub}</span>}
-            </span>
-            <ChevronRight className="text-muted-foreground size-5 shrink-0" />
-          </Link>
-        </li>
-      ))}
-    </ListCard>
+              <ChevronRight className="text-muted-foreground size-5 shrink-0" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
 function Ring({ row }: { row: PaidRow }) {
-  // Размеры из макета C3: кольцо 48, дорожка 5.
-  const r = 20
+  // Размеры из макета C2: кольцо 60, дорожка 6.
+  const r = 25
   const length = 2 * Math.PI * r
   return (
-    <span className="relative flex size-12 shrink-0 items-center justify-center">
-      <svg aria-hidden viewBox="0 0 48 48" className="absolute inset-0 size-full -rotate-90">
+    <span className="relative flex size-15 shrink-0 items-center justify-center">
+      <svg aria-hidden viewBox="0 0 60 60" className="absolute inset-0 size-full -rotate-90">
         <circle
-          cx={24}
-          cy={24}
+          cx={30}
+          cy={30}
           r={r}
           fill="none"
-          strokeWidth={5}
+          strokeWidth={6}
           className="stroke-foreground/10"
         />
         {row.share > 0 && (
           <circle
-            cx={24}
-            cy={24}
+            cx={30}
+            cy={30}
             r={r}
             fill="none"
-            strokeWidth={5}
+            strokeWidth={6}
             strokeLinecap="round"
             strokeDasharray={`${row.share * length} ${length}`}
             className={row.tone === 'low' ? 'stroke-warning' : 'stroke-primary'}
@@ -162,7 +165,7 @@ function Ring({ row }: { row: PaidRow }) {
       <span
         aria-hidden
         className={cn(
-          'relative text-lg font-semibold tabular-nums',
+          'relative text-xl font-semibold tabular-nums',
           row.tone === 'low' && 'text-warning',
           row.tone === 'empty' && 'text-destructive',
         )}
