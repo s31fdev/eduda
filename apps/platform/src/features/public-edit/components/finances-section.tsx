@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { ChevronDown, Info } from 'lucide-react'
 import { formatCurrency } from '@/src/lib/utils'
-import { cabinetLessons, dayLabel, lessonsWord, splitByToday, weekday } from '../lib'
+import { cabinetLessons, dayLabel, lessonsWord, splitByNow, weekday } from '../lib'
 import {
   usePublicStudentFinancesQuery,
   usePublicStudentGroupsQuery,
@@ -43,8 +43,8 @@ export default function FinancesSection({ token }: { token: string }) {
   }
 
   const data = finances.data
-  const { today } = groups.data
-  const { ahead } = splitByToday(cabinetLessons(groups.data.groups), today)
+  const { today, now } = groups.data
+  const { ahead } = splitByNow(cabinetLessons(groups.data.groups), now)
 
   const active = data.wallets.filter((wallet) => wallet.status === 'ACTIVE')
   const archived = data.wallets.filter((wallet) => wallet.status !== 'ACTIVE')

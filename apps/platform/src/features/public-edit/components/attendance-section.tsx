@@ -18,7 +18,7 @@ import {
   parentAbsenceBlocker,
   type ParentAttendanceAction,
   plural,
-  splitByToday,
+  splitByNow,
   weekday,
 } from '../lib'
 import { usePublicStudentGroupsQuery, useSelectedChild } from '../queries'
@@ -76,7 +76,7 @@ export default function AttendanceSection({ token }: { token: string }) {
   }
 
   const lessons = cabinetLessons(groups)
-  const { ahead, past } = splitByToday(lessons, today)
+  const { ahead, past } = splitByNow(lessons, now)
   const { marked, present, rate } = attendanceOf(past)
   const months = byMonth(past)
   const child = children.find((item) => item.id === studentId)!

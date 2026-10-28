@@ -119,12 +119,38 @@ export function cabinetLessons(groups: GroupsData): CabinetLesson[] {
 }
 
 /**
- * «Впереди» — всё, что ещё может измениться: будущие и сегодняшние занятия без
- * отметки преподавателя. Сегодняшнее отмеченное уже прошлое. `past` — от новых к старым.
+ * Когда занятие кончается — `YYYY-MM-DD HH:mm` по часам школы, чтобы сравнивать
+ * строкой. Время диапазоном («16:00-17:00») — по его концу, иначе начало плюс
+ * длительность. `null`, если время не разобрать.
  */
-export function splitByToday(lessons: CabinetLesson[], today: string) {
-  const isAhead = (l: CabinetLesson) =>
-    l.date >= today && l.state !== 'present' && l.state !== 'absent'
+function lessonEnd(lesson: { date: string; time: string; duration: number }): string | null {
+  const [start = '', end] = lesson.time.split('-').map((part) => part.trim())
+  const minutesOf = (hm: string) => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(hm)
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null
+  }
+  const from = minutesOf(start)
+  const minutes = end ? minutesOf(end) : from == null ? null : from + lesson.duration
+  if (minutes == null) return null
+  // Стеночасы одной зоны считаем как UTC: так полночь переходится без поясов.
+  const iso = new Date(Date.parse(`${lesson.date}T00:00:00Z`) + minutes * 60_000).toISOString()
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`
+}
+
+/**
+ * «Впереди» — занятия, которые ещё не кончились и которые преподаватель не
+ * отметил: с ними ещё может что-то случиться. Отмеченное — уже прошлое, даже если
+ * идёт сейчас. Кончившееся без отметки — тоже прошлое: там оно ждёт отметки
+ * преподавателя, а не висит «следующим» до полуночи. `past` — от новых к старым.
+ */
+export function splitByNow(lessons: CabinetLesson[], now: SchoolNow) {
+  const nowAt = `${now.date} ${now.time}`
+  const isAhead = (l: CabinetLesson) => {
+    if (l.state === 'present' || l.state === 'absent') return false
+    const end = lessonEnd(l)
+    // Время не разобрать — занятие впереди до конца своего дня.
+    return end ? end > nowAt : l.date >= now.date
+  }
   return {
     ahead: lessons.filter(isAhead),
     past: lessons.filter((l) => !isAhead(l)).reverse(),

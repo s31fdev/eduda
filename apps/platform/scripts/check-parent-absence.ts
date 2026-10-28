@@ -12,8 +12,11 @@ import assert from 'node:assert/strict'
 import {
   absenceDeadline,
   parentAbsenceBlocker,
+  splitByNow,
   type BlockableAttendance,
   type BlockableLesson,
+  type CabinetLesson,
+  type LessonState,
   type SchoolNow,
 } from '../src/features/public-edit/lib'
 
@@ -326,5 +329,35 @@ blocked(
   parentAbsenceBlocker(parentWarned, activeLesson(RECENT), NOW, 'unmark'),
   'снять прошедшую отметку',
 )
+
+// ─── Что «впереди»: по концу занятия, а не по дате ──────────────────
+
+const lessonAt = (date: string, time: string, state: LessonState = 'pending') =>
+  ({ date, time, duration: 90, state }) as CabinetLesson
+const isAhead = (lesson: CabinetLesson, now: SchoolNow) =>
+  splitByNow([lesson], now).ahead.length === 1
+
+assert.equal(isAhead(lessonAt(TODAY, '18:00'), at('19:29')), true, 'занятие ещё идёт')
+assert.equal(
+  isAhead(lessonAt(TODAY, '18:00'), at('19:31')),
+  false,
+  'кончилось без отметки — уже прошлое, а не «следующее»',
+)
+assert.equal(
+  isAhead(lessonAt(TODAY, '18:00-19:00'), at('19:01')),
+  false,
+  'время диапазоном — по его концу',
+)
+assert.equal(
+  isAhead(lessonAt(TODAY, '18:00', 'present'), at('18:10')),
+  false,
+  'отмеченное — прошлое, даже если идёт',
+)
+assert.equal(
+  isAhead(lessonAt(TODAY, 'вечер'), at('23:00')),
+  true,
+  'время не разобрать — впереди до конца дня',
+)
+assert.equal(isAhead(lessonAt(TOMORROW, '00:15'), at('23:59')), true, 'завтрашнее')
 
 console.log('check-parent-absence: OK')

@@ -16,7 +16,7 @@ import {
   groupSummaries,
   parentAbsenceBlocker,
   type SchoolNow,
-  splitByToday,
+  splitByNow,
   timeRange,
   weekday,
   whenLabel,
@@ -77,7 +77,7 @@ export default function CabinetHome({ token }: { token: string }) {
   // ближайшие занятия и проверки в кабинете смотрят на одну и ту же дату.
   const { today, now, canMarkAbsence } = groups.data
   const lessons = cabinetLessons(groups.data.groups)
-  const { ahead, past } = splitByToday(lessons, today)
+  const { ahead, past } = splitByNow(lessons, now)
   const next = ahead.find((lesson) => lesson.state !== 'cancelled')
   // «Дальше» — только после следующего: отменённые уроки перед ним в список не
   // попадают, иначе он начинался бы с даты раньше той, что на карточке выше.
