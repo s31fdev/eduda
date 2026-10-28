@@ -221,12 +221,8 @@ function NextLessonCard({
   const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
   const canChange = canMarkAbsence && absenceActionable(lesson, now)
 
-  // Пояснение — только про деньги: что будет с занятием. Почему кнопки нет, не
-  // пишем (решение 28.10.2026): срок «за 30 минут» и так виден в «Занятиях».
-  let notice: string | null = null
-  if (lesson.state === 'warned') notice = 'Школа знает о пропуске — занятие не спишется'
-  else if (lesson.makeupFor)
-    notice = `Отработка за ${formatDate(lesson.makeupFor.date)} — спишется, даже если не прийти`
+  // Пояснений в карточке нет (решение 28.10.2026): что будет с деньгами, родитель
+  // видит в шторке пропуска и в «Занятиях», срок «за 30 минут» — там же.
 
   // Заголовок — во всю ширину, кнопка — в строке с полями: длинная дата
   // переносится сама и кнопку не двигает.
@@ -246,7 +242,6 @@ function NextLessonCard({
           {timeRange(lesson.time, lesson.duration)}
         </span>
       </span>
-      {notice && <span className="text-sm opacity-85">{notice}</span>}
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
         <span className="flex min-w-0 flex-col gap-1.5 text-sm opacity-85 md:flex-row md:flex-wrap md:gap-x-5">
