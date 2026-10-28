@@ -106,27 +106,36 @@ export function paidRows(
  * «Балансы» на главной: карточка на кошелёк, одна она или их пять. В кольце —
  * сколько оплаченных занятий осталось, дуга — та же величина долей абонемента.
  * Жёлтые дуга и цифра — занятия кончаются; оплаченных нет — пустое кольцо и
- * красный ноль. Каждая карточка ведёт в «Оплату».
+ * красный ноль. В «Оплату» ведёт одна ссылка у заголовка: карточки вели бы на ту
+ * же страницу, сколько бы их ни было (решение 29.10.2026).
  */
 export function PaidLessonsSection({ rows, href }: { rows: PaidRow[]; href: string }) {
   return (
     <section aria-labelledby="balances-title" className="flex flex-col gap-2.5">
-      <SectionTitle id="balances-title">Балансы</SectionTitle>
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle id="balances-title">Балансы</SectionTitle>
+        {/* Отрицательный отступ — палец попадает в 44 px, а строка не растёт. */}
+        <Link
+          href={href}
+          aria-label="Подробнее об оплате"
+          className="text-primary -my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold"
+        >
+          Подробнее
+          <ChevronRight className="size-4" />
+        </Link>
+      </div>
       <ul className="flex flex-col gap-2.5">
         {rows.map((row) => (
-          <li key={row.id}>
-            <Link href={href} className="bg-card flex items-center gap-4 rounded-2xl border p-4">
-              <Ring row={row} />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-base font-semibold">{row.label}</span>
-                {/* Цифра в кольце скрыта от экранного диктора — здесь она словами. */}
-                <span className="sr-only">
-                  Оплачено {row.balance} {lessonsWord(row.balance)}.
-                </span>
-                {row.sub && <span className="text-muted-foreground text-sm">{row.sub}</span>}
+          <li key={row.id} className="bg-card flex items-center gap-4 rounded-2xl border p-4">
+            <Ring row={row} />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-base font-semibold">{row.label}</span>
+              {/* Цифра в кольце скрыта от экранного диктора — здесь она словами. */}
+              <span className="sr-only">
+                Оплачено {row.balance} {lessonsWord(row.balance)}.
               </span>
-              <ChevronRight className="text-muted-foreground size-5 shrink-0" />
-            </Link>
+              {row.sub && <span className="text-muted-foreground text-sm">{row.sub}</span>}
+            </span>
           </li>
         ))}
       </ul>
