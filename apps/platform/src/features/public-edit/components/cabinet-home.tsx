@@ -4,7 +4,7 @@ import { formatDate } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { Bell, BookOpen, Check, ChevronRight, MapPin, UserRound, X } from 'lucide-react'
+import { Bell, BookOpen, Check, ChevronRight, GraduationCap, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import {
   absenceActionable,
@@ -252,7 +252,7 @@ function NextLessonCard({
           </span>
           {lesson.teachers.length > 0 && (
             <span className="flex items-center gap-2">
-              <UserRound className="size-4 shrink-0" />
+              <GraduationCap className="size-4 shrink-0" />
               <span className="sr-only">Преподаватель:</span>
               {lesson.teachers.join(', ')}
             </span>
