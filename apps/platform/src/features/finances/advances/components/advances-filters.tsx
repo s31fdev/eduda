@@ -10,7 +10,7 @@ import {
   CHARGEABLE_STATUS_OPTIONS,
 } from '@/src/features/finances/chargeable'
 import { useOrgTimezone } from '@/src/hooks/use-org-timezone'
-import { nowInTz } from '@/src/lib/timezone'
+import { nowInTz, todayYmdInTz, ymdToLocalDate } from '@/src/lib/timezone'
 import {
   endOfMonth,
   endOfWeek,
@@ -58,10 +58,15 @@ function makeDatePresets(tz: string) {
     },
     {
       label: 'Учебный год',
-      getValue: () => ({
-        from: new Date(2025, 8, 1), // 1 сентября 2025
-        to: new Date(2026, 4, 31), // 31 мая 2026
-      }),
+      // С 1 сентября по 31 мая. Летом идёт ещё уходящий год: в июле это прошлый сентябрь.
+      getValue: () => {
+        const today = todayYmdInTz(tz)
+        const year = Number(today.slice(0, 4)) - (today.slice(5) < '09-01' ? 1 : 0)
+        return {
+          from: ymdToLocalDate(`${year}-09-01`),
+          to: ymdToLocalDate(`${year + 1}-05-31`),
+        }
+      },
     },
   ]
 }
