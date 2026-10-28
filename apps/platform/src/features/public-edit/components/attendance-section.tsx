@@ -25,7 +25,7 @@ import { usePublicStudentGroupsQuery, useSelectedChild } from '../queries'
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import {
-  type ChipKind,
+  aheadChip,
   CollapsiblePanel,
   LessonLine,
   ListCard,
@@ -311,13 +311,6 @@ function monthSummary(lessons: CabinetLesson[]) {
   ]
     .filter(Boolean)
     .join(' · ')
-}
-
-function aheadChip(lesson: CabinetLesson): ChipKind | null {
-  if (lesson.state === 'cancelled') return 'cancelled'
-  if (lesson.state === 'warned') return 'warned'
-  if (lesson.makeupFor) return 'makeup'
-  return null
 }
 
 /** Вторая строка будущего занятия: где оно, а у пропусков — что будет с деньгами. */

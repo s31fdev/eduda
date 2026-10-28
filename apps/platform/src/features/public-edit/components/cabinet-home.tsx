@@ -22,7 +22,7 @@ import {
 } from '../queries'
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { PrivacyNote } from './cabinet-ui'
+import { aheadChip, PrivacyNote, StateChip } from './cabinet-ui'
 import { ShopCard } from './shop-card'
 
 export default function CabinetHome({ token }: { token: string }) {
@@ -137,9 +137,9 @@ function NextLessonCard({
   const today = now.date
   const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
   const canChange = canMarkAbsence && absenceActionable(lesson, now)
-
-  // Пояснений в карточке нет (решение 28.10.2026): что будет с деньгами, родитель
-  // видит в шторке пропуска и в «Занятиях», срок «за 30 минут» — там же.
+  // Пропуск и отработка — тем же бейджем, что в «Впереди». Пояснений текстом в
+  // карточке нет (решение 28.10.2026): деньги объясняют шторка и «Занятия».
+  const chip = aheadChip(lesson)
 
   // Заголовок — во всю ширину, кнопка — в строке с полями: длинная дата
   // переносится сама и кнопку не двигает.
@@ -148,8 +148,13 @@ function NextLessonCard({
       aria-labelledby="next-title"
       className="bg-primary text-primary-foreground flex flex-col gap-3 rounded-3xl p-5 md:p-7"
     >
-      <span id="next-title" className="text-sm font-medium opacity-85">
-        {lesson.makeupFor ? 'Следующее занятие · отработка' : 'Следующее занятие'}
+      <span className="flex items-center justify-between gap-3">
+        <span id="next-title" className="text-sm font-medium opacity-85">
+          Следующее занятие
+        </span>
+        {chip && (
+          <StateChip kind={chip} className="bg-primary-foreground/15 text-primary-foreground" />
+        )}
       </span>
       <span className="flex flex-col gap-1">
         <span className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">

@@ -3,7 +3,7 @@ import { cn } from '@/src/lib/utils'
 import { CollapsibleContent } from '@repo/ui/components/collapsible'
 import { Ban, Bell, Check, Lock, Minus, RotateCcw, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { LessonState } from '../lib'
+import type { CabinetLesson, LessonState } from '../lib'
 
 /**
  * Мелкие кирпичи кабинета: карточка-список, дата столбиком, чип статуса.
@@ -91,13 +91,26 @@ const CHIPS: Record<ChipKind, { label: string; icon: LucideIcon; className: stri
   cancelled: { label: 'Отменено', icon: Ban, className: 'bg-muted text-muted-foreground' },
 }
 
-export function StateChip({ kind }: { kind: ChipKind }) {
+/**
+ * Бейдж занятия, которое ещё впереди: что с ним не так, как обычно. Одно правило
+ * для списка «Впереди» и карточки следующего занятия на главной.
+ */
+export function aheadChip(lesson: CabinetLesson): ChipKind | null {
+  if (lesson.state === 'cancelled') return 'cancelled'
+  if (lesson.state === 'warned') return 'warned'
+  if (lesson.makeupFor) return 'makeup'
+  return null
+}
+
+/** `className` перекрашивает бейдж под цветной фон: цвет статуса там не читается. */
+export function StateChip({ kind, className }: { kind: ChipKind; className?: string }) {
   const chip = CHIPS[kind]
   return (
     <span
       className={cn(
         'inline-flex h-6.5 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold',
         chip.className,
+        className,
       )}
     >
       <chip.icon className="size-3.5" strokeWidth={2.5} />
