@@ -5,16 +5,70 @@ import { ConflictError, NotFoundError } from '../../lib/error'
 import { unchargeAttendanceTx } from '../finances/ledger.server'
 
 /**
- * Запись на отработку и её перенос.
+ * Отработки: куда можно записать, сама запись и её перенос — одни для платформы
+ * и кабинета родителя.
  *
  * Сервер не верит клиенту ни в чём: пропуск и урок ищутся в своей школе, ученик
- * берётся из пропуска, а не из запроса, места и повтор проверяются здесь же. Без
- * этого сотрудник одной школы, подставив номер урока, записывал ученика на урок
- * другой, а повтор падал ошибкой базы вместо отказа.
+ * берётся из пропуска, а не из запроса, места, повтор и само правило проверяются
+ * здесь же, а не только списком в окне. Без этого сотрудник одной школы, подставив
+ * номер урока, записывал ученика на урок другой, а повтор падал ошибкой базы.
  *
  * Живёт отдельно от экшенов по той же причине, что `finances/ledger.server.ts`:
  * её зовёт `scripts/check-money-cases.ts` без сессии.
  */
+
+/** Пропущенное занятие глазами правила: чей ребёнок, какая группа, курс и филиал. */
+export type MakeupRuleSource = {
+  organizationId: number
+  studentId: number
+  groupId: number
+  courseId: number
+  locationId: number
+}
+
+/**
+ * Чем стороны различаются. Кабинет: только филиал пропущенного занятия и только
+ * ближайшие дни. Платформа: все филиалы и любой день, в том числе прошедший —
+ * менеджер записывает отработку задним числом, если ребёнок уже сходил.
+ */
+export type MakeupScope = {
+  sameLocation: boolean
+  dates?: { gt: string; lte: string }
+}
+
+const PLATFORM: MakeupScope = { sameLocation: false }
+
+/**
+ * Куда можно записать на отработку: урок группы того же курса или группы, у
+ * которой есть общий преподаватель с группой пропуска. По преподавателю подходят
+ * и группы другого курса — это решение школы (27.10.2026).
+ *
+ * Преподаватель — закреплённый за группой (`TeacherGroup`), а не за уроком:
+ * замена на одном уроке группу «группой того же преподавателя» не делает.
+ *
+ * И всегда: урок своей школы, урок и группа активны, ребёнка на уроке ещё нет —
+ * так отсекаются и уроки его собственных групп. Свободные места условием не
+ * выразить: их проверяют по `_count` после выборки.
+ */
+export function makeupTargetWhere(
+  source: MakeupRuleSource,
+  scope: MakeupScope,
+): Prisma.LessonWhereInput {
+  return {
+    organizationId: source.organizationId,
+    status: 'ACTIVE',
+    attendance: { none: { studentId: source.studentId } },
+    ...(scope.dates && { date: scope.dates }),
+    group: {
+      status: 'ACTIVE',
+      ...(scope.sameLocation && { locationId: source.locationId }),
+      OR: [
+        { courseId: source.courseId },
+        { teachers: { some: { teacher: { groups: { some: { groupId: source.groupId } } } } } },
+      ],
+    },
+  }
+}
 
 type MakeupArgs = {
   organizationId: number
@@ -22,10 +76,14 @@ type MakeupArgs = {
   sourceAttendanceId: number
   targetLessonId: number
   actorUserId: number | null
+  scope?: MakeupScope
 }
 
 /** Пропуск своей школы, у которого может быть отработка. */
-async function findSourceTx(tx: Prisma.TransactionClient, args: MakeupArgs) {
+export async function findMakeupSourceTx(
+  tx: Prisma.TransactionClient,
+  args: { organizationId: number; sourceAttendanceId: number },
+) {
   const source = await tx.attendance.findFirst({
     where: { id: args.sourceAttendanceId, organizationId: args.organizationId },
     select: {
@@ -33,6 +91,7 @@ async function findSourceTx(tx: Prisma.TransactionClient, args: MakeupArgs) {
       studentId: true,
       makeupForAttendanceId: true,
       makeupAttendance: { select: { id: true } },
+      lesson: { select: { group: { select: { id: true, courseId: true, locationId: true } } } },
     },
   })
   if (!source) throw new NotFoundError('Запись посещаемости не найдена')
@@ -40,20 +99,29 @@ async function findSourceTx(tx: Prisma.TransactionClient, args: MakeupArgs) {
   if (source.makeupForAttendanceId != null) {
     throw new ConflictError('Отработку нельзя отработать ещё раз')
   }
-  return source
+
+  const { group } = source.lesson
+  const rule: MakeupRuleSource = {
+    organizationId: args.organizationId,
+    studentId: source.studentId,
+    groupId: group.id,
+    courseId: group.courseId,
+    locationId: group.locationId,
+  }
+  return { ...source, rule }
 }
 
-/** Урок своей школы, куда ученика можно записать: не отменён, есть место, его там ещё нет. */
+/** Урок, куда ученика можно записать: каждый отказ называет свою причину. */
 async function assertTargetTx(
   tx: Prisma.TransactionClient,
-  args: MakeupArgs & { studentId: number },
+  args: MakeupArgs & { rule: MakeupRuleSource },
 ) {
   const target = await tx.lesson.findFirst({
     where: { id: args.targetLessonId, organizationId: args.organizationId },
     select: {
       status: true,
       group: { select: { maxStudents: true } },
-      attendance: { where: { studentId: args.studentId }, select: { id: true } },
+      attendance: { where: { studentId: args.rule.studentId }, select: { id: true } },
       _count: { select: { attendance: true } },
     },
   })
@@ -63,15 +131,25 @@ async function assertTargetTx(
   if (target._count.attendance >= target.group.maxStudents) {
     throw new ConflictError('На уроке нет свободных мест')
   }
+
+  const fits = await tx.lesson.count({
+    where: { id: args.targetLessonId, ...makeupTargetWhere(args.rule, args.scope ?? PLATFORM) },
+  })
+  if (fits === 0) {
+    throw new ConflictError(
+      'Этот урок не подходит для отработки: нужна группа того же курса или того же преподавателя',
+    )
+  }
 }
 
-const makeupRow = (args: MakeupArgs, studentId: number) => ({
+const makeupRow = (args: MakeupArgs, studentId: number, parentMarkedAt: Date | null) => ({
   organizationId: args.organizationId,
   studentId,
   lessonId: args.targetLessonId,
   comment: '',
   status: 'UNSPECIFIED' as const,
   makeupForAttendanceId: args.sourceAttendanceId,
+  parentMarkedAt,
 })
 
 /**
@@ -79,18 +157,22 @@ const makeupRow = (args: MakeupArgs, studentId: number) => ({
  * которого его списали, и на баланс. Спишется он заново уже на отработке — по
  * цене того пакета, который будет головным тогда. Запись и возврат идут одной
  * транзакцией: иначе упавший возврат оставлял отработку без вернувшегося урока.
+ *
+ * `parentMarkedAt` — запись из кабинета: по нему школа видит её в ленте.
  */
 export async function createMakeupTx(
   tx: Prisma.TransactionClient,
-  args: MakeupArgs & { creditBalance: boolean },
+  args: MakeupArgs & { creditBalance: boolean; parentMarkedAt?: Date },
 ) {
-  const source = await findSourceTx(tx, args)
+  const source = await findMakeupSourceTx(tx, args)
   if (source.makeupAttendance) {
     throw new ConflictError('Отработка уже назначена — измените её дату')
   }
-  await assertTargetTx(tx, { ...args, studentId: source.studentId })
+  await assertTargetTx(tx, { ...args, rule: source.rule })
 
-  const makeup = await tx.attendance.create({ data: makeupRow(args, source.studentId) })
+  const makeup = await tx.attendance.create({
+    data: makeupRow(args, source.studentId, args.parentMarkedAt ?? null),
+  })
 
   if (args.creditBalance) {
     await unchargeAttendanceTx(tx, {
@@ -111,10 +193,10 @@ export async function createMakeupTx(
  * любую строку посещаемости школы.
  */
 export async function rescheduleMakeupTx(tx: Prisma.TransactionClient, args: MakeupArgs) {
-  const source = await findSourceTx(tx, args)
+  const source = await findMakeupSourceTx(tx, args)
   const old = source.makeupAttendance
   if (!old) throw new ConflictError('У пропуска нет отработки — запишите на новую')
-  await assertTargetTx(tx, { ...args, studentId: source.studentId })
+  await assertTargetTx(tx, { ...args, rule: source.rule })
 
   // Если по старой дате урок уже списали, возвращаем его в пакет и на баланс —
   // на новой дате он спишется заново. Пропуск не трогаем: отработка у него
@@ -127,5 +209,5 @@ export async function rescheduleMakeupTx(tx: Prisma.TransactionClient, args: Mak
   })
   await tx.attendance.delete({ where: { id: old.id } })
 
-  return tx.attendance.create({ data: makeupRow(args, source.studentId) })
+  return tx.attendance.create({ data: makeupRow(args, source.studentId, null) })
 }

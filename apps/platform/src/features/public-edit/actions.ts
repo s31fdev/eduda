@@ -3,6 +3,12 @@
 import { prisma } from '@repo/db'
 import { unchargeAttendanceTx } from '@/src/features/finances/ledger.server'
 import { getUnpaidLessonsOfStudent } from '@/src/features/finances/unpaid.server'
+import {
+  createMakeupTx,
+  type MakeupRuleSource,
+  type MakeupScope,
+  makeupTargetWhere,
+} from '@/src/features/lessons/makeup.server'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
 import { getEffectiveFeatures } from '@/src/lib/features/effective'
 import { isFeatureDisabled } from '@/src/lib/features/registry'
@@ -611,7 +617,11 @@ export const setPublicAbsence = publicAction
 
 // ─── Отработка: выбор занятия ───────────────────────────────────────
 
-/** Проверяет исходный пропуск и возвращает курс/локацию для подбора занятий. */
+/**
+ * Проверяет пропуск ребёнка по правилам кабинета и отдаёт его глазами общего
+ * правила отработок (`makeupTargetWhere`): родителю — только филиал пропуска и
+ * только ближайшие дни.
+ */
 async function resolveMakeupSource(
   attendanceId: number,
   studentId: number,
@@ -628,7 +638,7 @@ async function resolveMakeupSource(
           date: true,
           time: true,
           status: true,
-          group: { select: { courseId: true, locationId: true } },
+          group: { select: { id: true, courseId: true, locationId: true } },
         },
       },
     },
@@ -638,7 +648,21 @@ async function resolveMakeupSource(
   const blocker = parentAbsenceBlocker(source, source.lesson, schoolNow(tz), 'makeup')
   if (blocker) throw new ConflictError(blocker)
 
-  return source
+  const { group } = source.lesson
+  const today = todayYmdInTz(tz)
+  return {
+    rule: {
+      organizationId,
+      studentId,
+      groupId: group.id,
+      courseId: group.courseId,
+      locationId: group.locationId,
+    },
+    scope: {
+      sameLocation: true,
+      dates: { gt: today, lte: addDaysYmd(today, MAKEUP_HORIZON_DAYS) },
+    },
+  } satisfies { rule: MakeupRuleSource; scope: MakeupScope }
 }
 
 export const getPublicMakeupOptions = publicAction
@@ -651,29 +675,15 @@ export const getPublicMakeupOptions = publicAction
     )
     await assertAbsenceEnabled(organizationId)
 
-    const source = await resolveMakeupSource(
+    const { rule, scope } = await resolveMakeupSource(
       parsedInput.attendanceId,
       studentId,
       organizationId,
       tz,
     )
 
-    const today = todayYmdInTz(tz)
-
     const lessons = await prisma.lesson.findMany({
-      where: {
-        organizationId,
-        status: 'ACTIVE',
-        date: { gt: today, lte: addDaysYmd(today, MAKEUP_HORIZON_DAYS) },
-        group: {
-          courseId: source.lesson.group.courseId,
-          locationId: source.lesson.group.locationId,
-          status: 'ACTIVE',
-        },
-        // Одним условием закрывает и @@unique([studentId, lessonId]), и занятия
-        // групп, куда ребёнок уже ходит: записи там уже созданы заранее.
-        attendance: { none: { studentId } },
-      },
+      where: makeupTargetWhere(rule, scope),
       select: {
         id: true,
         date: true,
@@ -720,57 +730,29 @@ export const createPublicMakeup = publicAction
     )
     await assertAbsenceEnabled(organizationId)
 
-    const source = await resolveMakeupSource(
+    const { scope } = await resolveMakeupSource(
       parsedInput.attendanceId,
       studentId,
       organizationId,
       tz,
     )
 
-    const today = todayYmdInTz(tz)
-
-    // Список из UI — подсказка; граница проверяется здесь и заново. Отдельная
-    // транзакция, потому что между выбором и отправкой урок мог заполниться.
-    return prisma.$transaction(async (tx) => {
-      const target = await tx.lesson.findFirst({
-        where: {
-          id: parsedInput.targetLessonId,
-          organizationId,
-          status: 'ACTIVE',
-          date: { gt: today, lte: addDaysYmd(today, MAKEUP_HORIZON_DAYS) },
-          group: {
-            courseId: source.lesson.group.courseId,
-            locationId: source.lesson.group.locationId,
-            status: 'ACTIVE',
-          },
-          attendance: { none: { studentId } },
-        },
-        select: {
-          id: true,
-          group: { select: { maxStudents: true } },
-          _count: { select: { attendance: true } },
-        },
-      })
-      if (!target) throw new ConflictError('На это занятие записаться нельзя. Выберите другое.')
-      if (target._count.attendance >= target.group.maxStudents) {
-        throw new ConflictError('На занятии не осталось мест. Выберите другое.')
-      }
-
-      // creditBalance staff-версии здесь намеренно нет: предупреждённый пропуск
-      // ничего не списал, так что «+1 к балансу» выдал бы бесплатное занятие.
-      return tx.attendance.create({
-        data: {
-          organizationId,
-          studentId,
-          lessonId: target.id,
-          comment: '',
-          status: 'UNSPECIFIED',
-          makeupForAttendanceId: parsedInput.attendanceId,
-          parentMarkedAt: new Date(),
-        },
-        select: { id: true },
-      })
-    })
+    // Список из UI — подсказка: урок заново проверяет `createMakeupTx` тем же
+    // правилом, потому что между выбором и отправкой он мог заполниться.
+    const makeup = await prisma.$transaction((tx) =>
+      createMakeupTx(tx, {
+        organizationId,
+        sourceAttendanceId: parsedInput.attendanceId,
+        targetLessonId: parsedInput.targetLessonId,
+        actorUserId: null,
+        scope,
+        // Возврата урока здесь намеренно нет: предупреждённый пропуск ничего не
+        // списал, так что «+1 к балансу» выдал бы бесплатное занятие.
+        creditBalance: false,
+        parentMarkedAt: new Date(),
+      }),
+    )
+    return { id: makeup.id }
   })
 
 // ─── Отработка: отмена ──────────────────────────────────────────────

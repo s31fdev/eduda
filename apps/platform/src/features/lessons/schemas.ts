@@ -106,6 +106,12 @@ export const RescheduleMakeupSchema = z.object({
   targetLessonId: z.number().int().positive(),
 })
 
+/** Окно «Записать на отработку»: уроки выбранного дня, подходящие пропуску. */
+export const MakeupOptionsSchema = z.object({
+  attendanceId: z.number().int().positive(),
+  date: DateOnlySchema,
+})
+
 export type CreateAttendanceSchemaType = z.infer<typeof CreateAttendanceSchema>
 export type UpdateAttendanceStatusSchemaType = z.infer<typeof UpdateAttendanceStatusSchema>
 export type UpdateAttendanceTrialStatusSchemaType = z.infer<

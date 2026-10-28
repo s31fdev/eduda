@@ -25,7 +25,11 @@ import {
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
-import { createMakeupTx, rescheduleMakeupTx } from '../src/features/lessons/makeup.server'
+import {
+  createMakeupTx,
+  type MakeupScope,
+  rescheduleMakeupTx,
+} from '../src/features/lessons/makeup.server'
 import { ConflictError, NotFoundError } from '../src/lib/error'
 
 class Rollback extends Error {}
@@ -818,6 +822,84 @@ async function main() {
             refused(/нет отработки/),
           )
           ok('перенос без отработки — отказ')
+
+          // ─── Правило: тот же курс или тот же преподаватель группы ───
+          const courseTwo = await tx.course.create({
+            data: { organizationId, name: 'Другой курс' },
+            select: { id: true },
+          })
+          const locationTwo = await tx.location.create({
+            data: { organizationId, name: 'Другой филиал' },
+            select: { id: true },
+          })
+          const groupWith = async (name: string, courseId: number, locationId: number) =>
+            (
+              await tx.group.create({
+                data: {
+                  organizationId,
+                  courseId,
+                  locationId,
+                  name,
+                  startDate: '2026-09-01',
+                  maxStudents: 20,
+                },
+                select: { id: true },
+              })
+            ).id
+          const colleague = await groupWith(
+            'Другой курс, тот же преподаватель',
+            courseTwo.id,
+            location.id,
+          )
+          const stranger = await groupWith(
+            'Другой курс, другой преподаватель',
+            courseTwo.id,
+            location.id,
+          )
+          const faraway = await groupWith('Тот же курс, другой филиал', course.id, locationTwo.id)
+
+          const teacher = await tx.user.create({
+            data: {
+              name: 'Преподаватель (проверка отработок)',
+              email: `check-makeup-${Date.now()}@example.invalid`,
+            },
+            select: { id: true },
+          })
+          const rate = await tx.rate.create({
+            data: { organizationId, name: 'Проверка отработок', bid: 0 },
+            select: { id: true },
+          })
+          for (const groupId of [groupOne.id, colleague]) {
+            await tx.teacherGroup.create({
+              data: { organizationId, groupId, teacherId: teacher.id, rateId: rate.id },
+            })
+          }
+
+          const freshMiss = async () => {
+            const id = await visit({ studentId: s.studentId })
+            await mark(id, AttendanceStatus.ABSENT, true)
+            return id
+          }
+          const bookFor = async (targetLessonId: number, scope?: MakeupScope) =>
+            createMakeupTx(tx, {
+              organizationId,
+              sourceAttendanceId: await freshMiss(),
+              targetLessonId,
+              actorUserId: null,
+              creditBalance: false,
+              scope,
+            })
+
+          await bookFor(await lessonIn(colleague))
+          ok('по общему преподавателю подходит и группа другого курса')
+
+          await assert.rejects(bookFor(await lessonIn(stranger)), refused(/не подходит/))
+          ok('другой курс у другого преподавателя не подходит')
+
+          const far = await lessonIn(faraway)
+          await assert.rejects(bookFor(far, { sameLocation: true }), refused(/не подходит/))
+          await bookFor(far)
+          ok('другой филиал: родителю отказ, менеджеру можно')
         }
 
         console.log('\nНесколько кошельков и разовые визиты')

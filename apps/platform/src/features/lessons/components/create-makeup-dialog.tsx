@@ -23,7 +23,7 @@ import { CalendarIcon, Loader } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import {
   useCreateMakeupMutation,
-  useLessonsByDateQuery,
+  useMakeupOptionsQuery,
   useRescheduleMakeupMutation,
 } from '../queries'
 import type { AttendanceForActions } from '../types'
@@ -38,7 +38,7 @@ export default function MakeUpDialog({ open, onOpenChange, attendance }: MakeUpD
   const lessonId = attendance.lessonId
   const [selectedDay, setSelectedDay] = useState<Date | undefined>()
   const dayKey = useMemo(() => selectedDay && startOfDay(selectedDay), [selectedDay])
-  const { data: lessons } = useLessonsByDateQuery(dayKey)
+  const { data: lessons } = useMakeupOptionsQuery(attendance.id, dayKey)
 
   const isReschedule = !!attendance.makeupAttendance
 
@@ -121,21 +121,24 @@ export default function MakeUpDialog({ open, onOpenChange, attendance }: MakeUpD
             value={selectedLesson}
             onValueChange={setSelectedLesson}
             placeholder="Выберите урок"
-            emptyText="Не найдено уроков на эту дату"
-            itemDisabled={(l) => l.attendance.length >= l.group.maxStudents}
+            emptyText="В этот день нет уроков того же курса или преподавателя"
+            itemDisabled={(l) => l._count.attendance >= l.group.maxStudents}
             renderItem={(l) => (
               <Item size="xs" className="p-0">
                 <ItemContent>
                   <ItemTitle className="whitespace-nowrap">{getGroupName(l.group)}</ItemTitle>
                   <ItemDescription>
+                    {/* Своё имя группы курса не называет, а по преподавателю
+                        подходят и группы другого курса. */}
+                    {l.group.name && `${l.group.course.name} | `}
                     {l.teachers.map((t) => t.teacher.name).join(', ')} | {l.group.location.name} |{' '}
                     <span
                       className={cn(
                         'tabular-nums',
-                        l.attendance.length >= l.group.maxStudents && 'text-destructive',
+                        l._count.attendance >= l.group.maxStudents && 'text-destructive',
                       )}
                     >
-                      {l.attendance.length}/{l.group.maxStudents}
+                      {l._count.attendance}/{l.group.maxStudents}
                     </span>
                   </ItemDescription>
                 </ItemContent>

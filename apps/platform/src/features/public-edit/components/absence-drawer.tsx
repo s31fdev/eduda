@@ -1,7 +1,7 @@
 'use client'
 
 import { formatDate } from '@/src/lib/timezone'
-import { cn, getGroupName } from '@/src/lib/utils'
+import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import {
   Drawer,
@@ -375,8 +375,8 @@ function MakeupStep({
           <DrawerTitle className="text-xl font-semibold tracking-tight">Отработка</DrawerTitle>
         </div>
         <DrawerDescription className="text-base text-pretty">
-          Взамен занятия {formatDate(lesson.date)}. Здесь занятия того же курса и в том же месте,
-          где есть свободные места.
+          Взамен занятия {formatDate(lesson.date)}. Здесь занятия того же курса или того же
+          преподавателя в этом филиале, где есть свободные места.
         </DrawerDescription>
       </DrawerHeader>
 
@@ -425,8 +425,11 @@ function MakeupStep({
                       <span className="text-base font-semibold">
                         {weekday(option.date)}, {formatDate(option.date)} · {option.time}
                       </span>
+                      {/* Курс — всегда: по преподавателю подходят и группы другого курса. */}
                       <span className="text-muted-foreground text-sm leading-snug">
-                        {[getGroupName(option.group), ...option.teachers].join(' · ')}
+                        {[option.group.course.name, option.group.name, ...option.teachers]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </span>
                     <span

@@ -11,6 +11,7 @@ import {
   deleteAttendanceById,
   deleteTeacherLesson,
   getLessonDetail,
+  getMakeupOptions,
   rescheduleMakeup,
   restoreLesson,
   updateAttendanceComment,
@@ -33,7 +34,6 @@ import type {
   UpdateAttendanceStatusSchemaType,
   UpdateAttendanceTrialStatusSchemaType,
 } from './schemas'
-import type { LessonByDate } from './types'
 import { calendarKeys } from '../calendar/queries'
 
 // ─── Key Factory ─────────────────────────────────────────────────────────────
@@ -41,7 +41,8 @@ import { calendarKeys } from '../calendar/queries'
 export const lessonKeys = {
   all: ['lessons'] as const,
   detail: (id: number) => ['lessons', 'detail', id] as const,
-  byDate: (dateKey: string) => ['lessons', 'byDate', dateKey] as const,
+  makeupOptions: (attendanceId: number, dateKey: string) =>
+    ['lessons', 'makeupOptions', attendanceId, dateKey] as const,
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -57,14 +58,15 @@ export const useLessonDetailQuery = (id: number) => {
   })
 }
 
-export const useLessonsByDateQuery = (date?: Date) => {
+/** Уроки выбранного дня, куда можно записать на отработку этот пропуск. */
+export const useMakeupOptionsQuery = (attendanceId: number, date?: Date) => {
   const dateKey = date ? dateToYmd(date) : ''
-  return useQuery<LessonByDate[]>({
-    queryKey: lessonKeys.byDate(dateKey),
+  return useQuery({
+    queryKey: lessonKeys.makeupOptions(attendanceId, dateKey),
     queryFn: async () => {
-      const res = await fetch(`/api/lessons/by-date?date=${dateKey}`)
-      if (!res.ok) throw new Error('Failed to fetch lessons')
-      return res.json()
+      const { data, serverError } = await getMakeupOptions({ attendanceId, date: dateKey })
+      if (serverError) throw serverError
+      return data ?? []
     },
     enabled: !!date,
   })

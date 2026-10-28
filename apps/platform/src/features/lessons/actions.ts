@@ -15,9 +15,14 @@ import { ATTENDANCE_COINS, recordCoins } from '@/src/lib/coins'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
 import { authAction, hasPermission, permissionAction } from '@/src/lib/safe-action'
 import { setLessonStatusTx } from '@/src/features/status-log/record.server'
-import { DateOnlySchema, formatDateOnly, todayYmdInTz } from '@/src/lib/timezone'
-import { getGroupName } from '@/src/lib/utils'
-import { createMakeupTx, rescheduleMakeupTx } from './makeup.server'
+import { formatDateOnly, todayYmdInTz } from '@/src/lib/timezone'
+import { getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
+import {
+  createMakeupTx,
+  findMakeupSourceTx,
+  makeupTargetWhere,
+  rescheduleMakeupTx,
+} from './makeup.server'
 import * as z from 'zod'
 import {
   AddTeacherToLessonSchema,
@@ -31,6 +36,7 @@ import {
   EditLessonSchema,
   EditTeacherLessonSchema,
   MANAGE_ATTENDANCE_PERMISSION,
+  MakeupOptionsSchema,
   MARK_ATTENDANCE_PERMISSION,
   PAID_TRIAL_PERMISSION,
   RescheduleMakeupSchema,
@@ -80,21 +86,35 @@ export const getLessonDetail = authAction
     })
   })
 
-// ─── Lesson List (by date, for makeup dialog) ───────────────────────────────
+// ─── Makeup options (окно «Записать на отработку») ───────────────────────────
 
-export const getLessonsByDate = authAction
-  .metadata({ actionName: 'getLessonsByDate' })
-  .inputSchema(z.object({ date: DateOnlySchema }))
+/**
+ * Уроки выбранного дня, куда можно записать на отработку, — по общему правилу
+ * (`makeupTargetWhere`): тот же курс или тот же преподаватель, все филиалы.
+ * Полные не отсекаем: окно показывает их выключенными, чтобы было видно почему.
+ */
+export const getMakeupOptions = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
+  .metadata({ actionName: 'getMakeupOptions' })
+  .inputSchema(MakeupOptionsSchema)
   .action(async ({ ctx, parsedInput }) => {
+    const { rule } = await findMakeupSourceTx(prisma, {
+      organizationId: ctx.session.organizationId!,
+      sourceAttendanceId: parsedInput.attendanceId,
+    })
     return await prisma.lesson.findMany({
-      where: {
-        date: parsedInput.date,
-        organizationId: ctx.session.organizationId!,
-      },
-      include: {
-        attendance: true,
-        group: { include: { course: true, location: true, schedules: true } },
-        teachers: { include: { teacher: true } },
+      where: { ...makeupTargetWhere(rule, { sameLocation: false }), date: parsedInput.date },
+      select: {
+        id: true,
+        time: true,
+        group: {
+          select: {
+            ...GROUP_LABEL_SELECT,
+            maxStudents: true,
+            location: { select: { name: true } },
+          },
+        },
+        teachers: { select: { teacher: { select: { name: true } } } },
+        _count: { select: { attendance: true } },
       },
       orderBy: { time: 'asc' },
     })
