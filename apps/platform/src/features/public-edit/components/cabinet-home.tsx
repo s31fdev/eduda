@@ -8,7 +8,6 @@ import { Bell, BookOpen, Check, ChevronRight, MapPin, UserRound, X } from 'lucid
 import Link from 'next/link'
 import {
   absenceActionable,
-  absenceCutoffPassed,
   attendanceOf,
   type CabinetLesson,
   cabinetLessons,
@@ -222,14 +221,12 @@ function NextLessonCard({
   const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
   const canChange = canMarkAbsence && absenceActionable(lesson, now)
 
-  // Пояснение — только там, где без него непонятно, почему кнопки нет или что
-  // будет с деньгами. Срок «можно до …» не пишем: раз кнопка есть, ещё можно.
+  // Пояснение — только про деньги: что будет с занятием. Почему кнопки нет, не
+  // пишем (решение 28.10.2026): срок «за 30 минут» и так виден в «Занятиях».
   let notice: string | null = null
   if (lesson.state === 'warned') notice = 'Школа знает о пропуске — занятие не спишется'
   else if (lesson.makeupFor)
     notice = `Отработка за ${formatDate(lesson.makeupFor.date)} — спишется, даже если не прийти`
-  else if (canMarkAbsence && !canMark && absenceCutoffPassed(lesson, now))
-    notice = 'Предупредить о пропуске из кабинета уже нельзя — свяжитесь со школой напрямую'
 
   // Заголовок — во всю ширину, кнопка — в строке с полями: длинная дата
   // переносится сама и кнопку не двигает.
