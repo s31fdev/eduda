@@ -30,6 +30,9 @@ export const parentCabinetUrl = (token: string) => `${protocol}://parent.${rootD
  */
 export const docsUrl = process.env.NEXT_PUBLIC_DOCS_URL || `${protocol}://docs.${rootDomain}`
 
+/** Магазин ученика (`apps/shop`) — так же отдельное приложение, адрес по тому же правилу. */
+export const shopUrl = process.env.NEXT_PUBLIC_SHOP_URL || `${protocol}://shop.${rootDomain}`
+
 /**
  * Ссылка на бота MAX, который рассылает напоминания родителям. Сам бот живёт в
  * `apps/bots`; платформе от него нужен только адрес, отсюда `NEXT_PUBLIC_`.

@@ -30,6 +30,7 @@ import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
 import { BalanceCard } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import { LessonLine, ListCard, PrivacyNote, SectionTitle } from './cabinet-ui'
+import { ShopCard } from './shop-card'
 
 export default function CabinetHome({ token }: { token: string }) {
   const {
@@ -122,6 +123,15 @@ export default function CabinetHome({ token }: { token: string }) {
           moreHref={`${base}/finances${childQuery}`}
         />
         <AttendanceCard past={past} href={`${base}/attendance${childQuery}`} />
+        {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
+        {finances.data.shop && (
+          <ShopCard
+            key={studentId}
+            token={token}
+            studentId={studentId!}
+            shop={finances.data.shop}
+          />
+        )}
       </div>
 
       {later.length > 0 && (

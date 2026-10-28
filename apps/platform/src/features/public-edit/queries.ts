@@ -8,6 +8,7 @@ import {
   createPublicMakeup,
   createPublicParent,
   getPublicMakeupOptions,
+  revealPublicStudentPassword,
   setPublicAbsence,
   updatePublicParent,
   updatePublicStudent,
@@ -16,6 +17,7 @@ import type {
   CancelPublicMakeupSchemaType,
   CreatePublicMakeupSchemaType,
   CreatePublicParentSchemaType,
+  PublicChildSchemaType,
   SetPublicAbsenceSchemaType,
   UpdatePublicParentSchemaType,
   UpdatePublicStudentSchemaType,
@@ -158,6 +160,15 @@ export const useCreatePublicParentMutation = () => {
       toast.error(errorText(error, 'Не удалось добавить родителя. Попробуйте ещё раз.')),
   })
 }
+
+/** Пароль ребёнка от магазина. Мутация, а не запрос: в кеш кабинета он не попадает. */
+export const useRevealPublicStudentPasswordMutation = () =>
+  useMutation({
+    mutationFn: (values: PublicChildSchemaType) =>
+      unwrapAction(revealPublicStudentPassword(values)),
+    onError: (error) =>
+      toast.error(errorText(error, 'Не удалось показать пароль. Попробуйте ещё раз.')),
+  })
 
 // ─── Посещаемость: пропуски и отработки ─────────────────────────────
 

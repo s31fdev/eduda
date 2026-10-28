@@ -8,6 +8,7 @@ import { getEffectiveFeatures } from '@/src/lib/features/effective'
 import { isFeatureDisabled } from '@/src/lib/features/registry'
 import { publicAction } from '@/src/lib/safe-action'
 import { touchStudentData } from '@/src/lib/student-data'
+import { decryptStudentPassword } from '@/src/lib/student-password'
 import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
 import { getAgeFromBirthDate, getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
 import { addDaysYmd, parentAbsenceBlocker, schoolNow } from './lib'
@@ -335,6 +336,21 @@ export const getPublicStudentFinances = publicAction
     // иначе про долг узнаёт кто угодно, кроме того, кто платит.
     const unpaid = await getUnpaidLessonsOfStudent(organizationId, studentId)
 
+    // Вход в магазин и коины. Сам пароль сюда не кладём: его отдаёт
+    // `revealPublicStudentPassword` по кнопке и с записью в лог.
+    const { disabledFeatures } = await getEffectiveFeatures(organizationId)
+    const account = isFeatureDisabled(disabledFeatures, 'shop')
+      ? null
+      : await prisma.studentAccount.findFirst({
+          where: { studentId, organizationId },
+          select: { login: true, coins: true, passwordEnc: true },
+        })
+    const shop = account && {
+      login: account.login,
+      coins: account.coins,
+      hasPassword: account.passwordEnc != null,
+    }
+
     const student = await prisma.student.findUnique({
       where: { id: studentId },
       select: {
@@ -382,7 +398,49 @@ export const getPublicStudentFinances = publicAction
       },
     })
 
-    return student && { ...student, unpaid }
+    return student && { ...student, unpaid, shop }
+  })
+
+// ─── Магазин: пароль ребёнка ────────────────────────────────────────
+
+/**
+ * Пароль от магазина — только по кнопке «Показать», а не вместе с данными
+ * кабинета: так он не уходит в браузер при каждом открытии и не лежит в кеше
+ * запросов. Каждый показ пишется в лог, как у сотрудника (`revealStudentPassword`).
+ */
+export const revealPublicStudentPassword = publicAction
+  .metadata({ actionName: 'revealPublicStudentPassword' })
+  .inputSchema(PublicChildSchema)
+  .action(async ({ parsedInput }) => {
+    const { parentId, studentId, organizationId } = await resolveChild(
+      parsedInput.token,
+      parsedInput.studentId,
+    )
+
+    const { disabledFeatures } = await getEffectiveFeatures(organizationId)
+    if (isFeatureDisabled(disabledFeatures, 'shop')) {
+      throw new ForbiddenError('Школа отключила магазин.')
+    }
+
+    const account = await prisma.studentAccount.findFirst({
+      where: { studentId, organizationId },
+      select: { passwordEnc: true },
+    })
+    if (!account?.passwordEnc) throw new NotFoundError('Пароль спросите в школе.')
+
+    console.info(
+      '[audit] revealPublicStudentPassword',
+      JSON.stringify({ parentId, organizationId, studentId, at: new Date().toISOString() }),
+    )
+
+    try {
+      return { password: decryptStudentPassword(account.passwordEnc) }
+    } catch (error) {
+      // Текст расшифровки обращён к сотруднику (ключ, перевыпуск) — родителю он
+      // ничего не скажет, поэтому в лог, а наружу — что делать.
+      console.error('[revealPublicStudentPassword]', error)
+      throw new ConflictError('Не удалось показать пароль. Спросите его в школе.')
+    }
   })
 
 // ─── Get student groups & attendance (read-only) ────────────────────
