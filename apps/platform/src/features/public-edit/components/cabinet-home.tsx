@@ -1,23 +1,18 @@
 'use client'
 
-import { formatDate } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import { Skeleton } from '@repo/ui/components/skeleton'
-import { Bell, BookOpen, Check, ChevronRight, GraduationCap, MapPin, X } from 'lucide-react'
-import Link from 'next/link'
+import { BookOpen, GraduationCap, MapPin } from 'lucide-react'
 import {
   absenceActionable,
-  attendanceOf,
   type CabinetLesson,
   cabinetLessons,
-  forecastPaid,
   groupSummaries,
   parentAbsenceBlocker,
   type SchoolNow,
   splitByNow,
   timeRange,
-  weekday,
   whenLabel,
 } from '../lib'
 import {
@@ -26,16 +21,14 @@ import {
   useSelectedChild,
 } from '../queries'
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
-import { BalanceCard } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { LessonLine, ListCard, PrivacyNote, SectionTitle } from './cabinet-ui'
+import { PrivacyNote } from './cabinet-ui'
 import { ShopCard } from './shop-card'
 
 export default function CabinetHome({ token }: { token: string }) {
   const {
     studentId,
     children,
-    childQuery,
     isPending: childPending,
     isError: childError,
   } = useSelectedChild(token)
@@ -72,24 +65,19 @@ export default function CabinetHome({ token }: { token: string }) {
     )
   }
 
-  // «Сегодня» считает сервер в поясе школы и отдаёт вместе с занятиями — так
-  // ближайшие занятия и проверки в кабинете смотрят на одну и ту же дату.
+  // «Сейчас» считает сервер в поясе школы и отдаёт вместе с занятиями — так
+  // ближайшее занятие и проверки в кабинете смотрят на одни и те же часы.
   const { today, now, canMarkAbsence } = groups.data
   const lessons = cabinetLessons(groups.data.groups)
-  const { ahead, past } = splitByNow(lessons, now)
-  const next = ahead.find((lesson) => lesson.state !== 'cancelled')
-  // «Дальше» — только после следующего: отменённые уроки перед ним в список не
-  // попадают, иначе он начинался бы с даты раньше той, что на карточке выше.
-  const later = ahead.slice(next ? ahead.indexOf(next) + 1 : 0).slice(0, 3)
-  // Все кошельки, как в карточке баланса: архивный тоже платит уроки своей группы.
-  const { unpaid } = forecastPaid(ahead, finances.data.wallets)
+  const next = splitByNow(lessons, now).ahead.find((lesson) => lesson.state !== 'cancelled')
   const child = children.find((item) => item.id === studentId)!
-  const base = `/${token}`
+  const shop = finances.data.shop
 
   return (
-    // Лишняя высота сетки уходит строке «Дальше по расписанию», иначе высокая
-    // правая колонка растянула бы карточку следующего занятия.
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:grid-rows-[auto_auto_1fr_auto] md:gap-6">
+    // Пока на главной только ближайшее занятие и магазин (решение 28.10.2026):
+    // остаток оплаченного — в «Оплате», посещаемость и расписание — в «Занятиях».
+    // `items-start` — карточки не тянутся за соседней по высоте.
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       {/* На десктопе под именем — чем ребёнок занят; на телефоне это есть в карточках. */}
       <p className="text-muted-foreground -mt-2 hidden text-base md:col-span-2 md:block">
         {groupSummaries(groups.data.groups, today)
@@ -98,7 +86,8 @@ export default function CabinetHome({ token }: { token: string }) {
           .join('; ')}
       </p>
 
-      <div className="md:col-start-1 md:row-start-2">
+      {/* Без магазина правая колонка пустая — занятие тогда во всю ширину. */}
+      <div className={cn(!shop && 'md:col-span-2')}>
         {next ? (
           <NextLessonCard
             lesson={next}
@@ -114,58 +103,10 @@ export default function CabinetHome({ token }: { token: string }) {
         )}
       </div>
 
-      <div className="flex flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-2 md:gap-6">
-        <BalanceCard
-          data={finances.data}
-          ahead={ahead}
-          today={today}
-          moreHref={`${base}/finances${childQuery}`}
-        />
-        <AttendanceCard past={past} href={`${base}/attendance${childQuery}`} />
-        {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
-        {finances.data.shop && (
-          <ShopCard
-            key={studentId}
-            token={token}
-            studentId={studentId!}
-            shop={finances.data.shop}
-          />
-        )}
-      </div>
+      {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
+      {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
 
-      {later.length > 0 && (
-        <section
-          aria-labelledby="later-title"
-          className="flex flex-col gap-2.5 md:col-start-1 md:row-start-3 md:self-start"
-        >
-          <div className="flex items-center justify-between">
-            <SectionTitle id="later-title">Дальше по расписанию</SectionTitle>
-            <Link
-              href={`${base}/attendance${childQuery}`}
-              className="text-primary flex min-h-8 items-center text-sm font-semibold"
-            >
-              Все занятия
-            </Link>
-          </div>
-          <ListCard>
-            {later.map((lesson) => {
-              const note = laterNote(lesson, unpaid.has(lesson.lessonId))
-              return (
-                <li key={lesson.lessonId} className="flex items-center gap-3.5 px-4 py-3">
-                  <LessonLine
-                    date={lesson.date}
-                    title={`${weekday(lesson.date)}, ${lesson.time}${lesson.makeupFor ? ' · отработка' : ''}`}
-                    sub={note.text}
-                    subClassName={note.className}
-                  />
-                </li>
-              )
-            })}
-          </ListCard>
-        </section>
-      )}
-
-      <div className="md:col-span-2 md:row-start-4">
+      <div className="md:col-span-2">
         <PrivacyNote many={children.length > 1} />
       </div>
 
@@ -180,30 +121,6 @@ export default function CabinetHome({ token }: { token: string }) {
       />
     </div>
   )
-}
-
-/** Пометка в строке «Дальше по расписанию»: что с этим занятием не так, как обычно. */
-function laterNote(lesson: CabinetLesson, unpaid: boolean) {
-  if (lesson.state === 'cancelled') {
-    return { text: 'Занятие отменено школой', className: undefined }
-  }
-  if (lesson.state === 'warned') {
-    return {
-      text:
-        lesson.att.parentMarkedAt != null
-          ? 'Пропуск — вы предупредили школу'
-          : 'Пропуск — школа знает, что не придёт',
-      className: 'text-warning',
-    }
-  }
-  if (lesson.makeupFor) {
-    return {
-      text: `Взамен ${formatDate(lesson.makeupFor.date)}, ${lesson.group}`,
-      className: 'text-info',
-    }
-  }
-  if (unpaid) return { text: 'Ещё не оплачено', className: 'text-warning' }
-  return { text: `${lesson.course} · ${lesson.location}`, className: undefined }
 }
 
 function NextLessonCard({
@@ -282,74 +199,11 @@ function NextLessonCard({
   )
 }
 
-/** Полоска последних отмеченных занятий: видно и процент, и где именно пропуски. */
-const STRIP = {
-  present: { label: 'Посещено', icon: Check, className: 'bg-success' },
-  absent: { label: 'Пропуск', icon: X, className: 'bg-destructive' },
-  warned: { label: 'Предупредили о пропуске', icon: Bell, className: 'bg-warning' },
-} as const
-
-function AttendanceCard({ past, href }: { past: CabinetLesson[]; href: string }) {
-  const { marked } = attendanceOf(past)
-  const recent = marked.slice(0, 10).reverse()
-  const present = recent.filter((l) => l.state === 'present').length
-
-  return (
-    <Link href={href} className="bg-card flex flex-col gap-3 rounded-2xl border p-5">
-      <span className="flex items-center justify-between">
-        <span className="text-muted-foreground text-sm font-medium">Посещаемость</span>
-        <ChevronRight className="text-muted-foreground size-4.5" />
-      </span>
-      {recent.length === 0 ? (
-        <span className="text-muted-foreground text-sm">Занятия ещё не отмечали.</span>
-      ) : (
-        <>
-          <span className="flex items-baseline gap-2.5">
-            <span className="text-3xl leading-tight font-semibold tracking-tight">
-              {Math.round((present / recent.length) * 100)}%
-            </span>
-            <span className="text-muted-foreground text-sm">
-              {present} из {recent.length} последних
-            </span>
-          </span>
-          <span className="flex gap-1.5">
-            {recent.map((lesson) => {
-              const cell = STRIP[lesson.state as keyof typeof STRIP]
-              const label = `${cell.label}, ${formatDate(lesson.date)}`
-              return (
-                <span
-                  key={lesson.lessonId}
-                  role="img"
-                  aria-label={label}
-                  title={label}
-                  className={cn(
-                    'text-background flex h-8 flex-1 items-center justify-center rounded-lg',
-                    cell.className,
-                  )}
-                >
-                  <cell.icon className="size-4" strokeWidth={2.5} />
-                </span>
-              )
-            })}
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {formatDate(recent[0]!.date)} — {formatDate(recent.at(-1)!.date)} · считаются только
-            отмеченные занятия
-          </span>
-        </>
-      )}
-    </Link>
-  )
-}
-
 function HomeSkeleton() {
   return (
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-6">
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       <Skeleton className="h-64 rounded-3xl" />
-      <div className="flex flex-col gap-4 md:gap-6">
-        <Skeleton className="h-52 rounded-2xl" />
-        <Skeleton className="h-44 rounded-2xl" />
-      </div>
+      <Skeleton className="h-52 rounded-2xl" />
     </div>
   )
 }
