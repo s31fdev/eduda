@@ -10,10 +10,20 @@ import {
   lessonsWord,
   plural,
 } from '../lib'
-import { walletLabel } from './balance-card'
+import { type CabinetWallet, walletLabel } from './balance-card'
 import { ListCard } from './cabinet-ui'
 
 type FinancesData = NonNullable<Awaited<ReturnType<typeof getPublicStudentFinances>>['data']>
+
+/**
+ * Строка подписана курсом, который кошелёк оплачивает сейчас: так же он назван на
+ * карточке занятия выше. Имя кошелька у школ служебное («Курс 26\27», «Оплата года
+ * 26/27»), к нему — только когда действующих групп нет.
+ */
+function courseLabel(wallet: CabinetWallet) {
+  const active = wallet.studentGroups.filter((sg) => sg.status === 'ACTIVE')
+  return [...new Set(active.map((sg) => sg.group.course.name))].join(', ') || walletLabel(wallet)
+}
 
 export type PaidRow = {
   id: number
@@ -83,7 +93,7 @@ export function paidRows(
 
       return {
         id: wallet.id,
-        label: walletLabel(wallet),
+        label: courseLabel(wallet),
         balance,
         share: balance > 0 ? balance / (used + balance) : 0,
         tone,
@@ -93,33 +103,24 @@ export function paidRows(
 }
 
 /**
- * Оплаченные занятия на главной. В кольце — сколько оплаченных занятий осталось,
- * дуга — та же величина долей абонемента. Жёлтые дуга и цифра — занятия
- * кончаются; оплаченных нет — пустое кольцо и красный ноль. Один кошелёк — крупная
- * строка «Оплачено N занятий», несколько — строка на кошелёк. Каждая ведёт в «Оплату».
+ * Оплаченные занятия на главной: строка на кошелёк, одна она или их пять. В кольце —
+ * сколько оплаченных занятий осталось, дуга — та же величина долей абонемента.
+ * Жёлтые дуга и цифра — занятия кончаются; оплаченных нет — пустое кольцо и
+ * красный ноль. Каждая строка ведёт в «Оплату».
  */
 export function PaidLessonsCard({ rows, href }: { rows: PaidRow[]; href: string }) {
-  const single = rows.length === 1
   return (
     <ListCard aria-label="Оплаченные занятия">
       {rows.map((row) => (
         <li key={row.id}>
-          <Link
-            href={href}
-            className={cn('flex items-center px-4', single ? 'gap-4 py-4' : 'gap-3.5 py-3')}
-          >
-            <Ring row={row} big={single} />
+          <Link href={href} className="flex items-center gap-3.5 px-4 py-3">
+            <Ring row={row} />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              {/* Ноль — тем же шаблоном: «Оплаченных занятий нет» на 375 уже в две строки. */}
-              <span className="text-base font-semibold">
-                {single ? `Оплачено ${row.balance} ${lessonsWord(row.balance)}` : row.label}
-              </span>
+              <span className="text-base font-semibold">{row.label}</span>
               {/* Цифра в кольце скрыта от экранного диктора — здесь она словами. */}
-              {!single && (
-                <span className="sr-only">
-                  Оплачено {row.balance} {lessonsWord(row.balance)}.
-                </span>
-              )}
+              <span className="sr-only">
+                Оплачено {row.balance} {lessonsWord(row.balance)}.
+              </span>
               {row.sub && <span className="text-muted-foreground text-sm">{row.sub}</span>}
             </span>
             <ChevronRight className="text-muted-foreground size-5 shrink-0" />
@@ -130,37 +131,28 @@ export function PaidLessonsCard({ rows, href }: { rows: PaidRow[]; href: string 
   )
 }
 
-function Ring({ row, big }: { row: PaidRow; big: boolean }) {
-  // Размеры из макета: 60 у одной строки, 48 у нескольких.
-  const [size, stroke, r] = big ? [60, 6, 25] : [48, 5, 20]
+function Ring({ row }: { row: PaidRow }) {
+  // Размеры из макета C3: кольцо 48, дорожка 5.
+  const r = 20
   const length = 2 * Math.PI * r
   return (
-    <span
-      className={cn(
-        'relative flex shrink-0 items-center justify-center',
-        big ? 'size-15' : 'size-12',
-      )}
-    >
-      <svg
-        aria-hidden
-        viewBox={`0 0 ${size} ${size}`}
-        className="absolute inset-0 size-full -rotate-90"
-      >
+    <span className="relative flex size-12 shrink-0 items-center justify-center">
+      <svg aria-hidden viewBox="0 0 48 48" className="absolute inset-0 size-full -rotate-90">
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx={24}
+          cy={24}
           r={r}
           fill="none"
-          strokeWidth={stroke}
+          strokeWidth={5}
           className="stroke-foreground/10"
         />
         {row.share > 0 && (
           <circle
-            cx={size / 2}
-            cy={size / 2}
+            cx={24}
+            cy={24}
             r={r}
             fill="none"
-            strokeWidth={stroke}
+            strokeWidth={5}
             strokeLinecap="round"
             strokeDasharray={`${row.share * length} ${length}`}
             className={row.tone === 'low' ? 'stroke-warning' : 'stroke-primary'}
@@ -170,8 +162,7 @@ function Ring({ row, big }: { row: PaidRow; big: boolean }) {
       <span
         aria-hidden
         className={cn(
-          'relative font-semibold tabular-nums',
-          big ? 'text-xl' : 'text-lg',
+          'relative text-lg font-semibold tabular-nums',
           row.tone === 'low' && 'text-warning',
           row.tone === 'empty' && 'text-destructive',
         )}

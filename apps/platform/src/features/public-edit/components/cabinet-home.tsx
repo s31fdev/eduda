@@ -222,7 +222,7 @@ function HomeSkeleton() {
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       <Skeleton className="h-64 rounded-3xl" />
       <div className="flex flex-col gap-4 md:gap-6">
-        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-18 rounded-2xl" />
         <Skeleton className="h-52 rounded-2xl" />
       </div>
     </div>
