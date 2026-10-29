@@ -115,15 +115,7 @@ export default function CabinetHome({ token }: { token: string }) {
             <PaidLessonsSection rows={paid} href={`/${token}/finances${childQuery}`} />
           )}
           {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
-          {shop && (
-            <ShopCard
-              key={studentId}
-              token={token}
-              studentId={studentId!}
-              shop={shop}
-              today={today}
-            />
-          )}
+          {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
         </div>
       )}
 
@@ -231,7 +223,7 @@ function HomeSkeleton() {
       <Skeleton className="h-64 rounded-3xl" />
       <div className="flex flex-col gap-4 md:gap-6">
         <Skeleton className="h-32 rounded-2xl" />
-        <Skeleton className="h-96 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     </div>
   )

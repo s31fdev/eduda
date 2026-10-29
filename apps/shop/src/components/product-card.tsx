@@ -2,7 +2,7 @@ import { Badge } from '@repo/ui/components/badge'
 import { Card, CardContent } from '@repo/ui/components/card'
 import Image from 'next/image'
 import Link from 'next/link'
-import { CoinPrice } from '@repo/ui/components/coin-price'
+import { CoinPrice } from './coin-price'
 
 export interface CatalogProduct {
   id: number
