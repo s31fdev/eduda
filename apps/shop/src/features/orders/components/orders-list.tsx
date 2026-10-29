@@ -1,4 +1,4 @@
-import { CoinPrice } from '@/src/components/coin-price'
+import { CoinPrice } from '@repo/ui/components/coin-price'
 import { formatDateTimeInTz } from '@repo/core/timezone'
 import { OrderStatus } from '@repo/db/enums'
 import {

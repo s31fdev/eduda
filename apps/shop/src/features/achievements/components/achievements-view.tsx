@@ -1,4 +1,4 @@
-import { CoinPrice } from '@/src/components/coin-price'
+import { CoinPrice } from '@repo/ui/components/coin-price'
 import { cn } from '@/src/lib/utils'
 import { formatDateTimeInTz } from '@repo/core/timezone'
 import { Card, CardContent } from '@repo/ui/components/card'

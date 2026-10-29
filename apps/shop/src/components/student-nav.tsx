@@ -1,6 +1,6 @@
 'use client'
 
-import { CoinPrice } from '@/src/components/coin-price'
+import { CoinPrice } from '@repo/ui/components/coin-price'
 import { useCartQuery } from '@/src/features/cart/queries'
 import { authClient } from '@/src/lib/auth/client'
 import { cn } from '@/src/lib/utils'

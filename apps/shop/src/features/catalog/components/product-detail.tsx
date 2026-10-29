@@ -1,4 +1,4 @@
-import { CoinPrice } from '@/src/components/coin-price'
+import { CoinPrice } from '@repo/ui/components/coin-price'
 import { CatalogProduct } from '@/src/components/product-card'
 import { AddToCartButton } from '@/src/features/cart/components/add-to-cart-button'
 import { Badge } from '@repo/ui/components/badge'

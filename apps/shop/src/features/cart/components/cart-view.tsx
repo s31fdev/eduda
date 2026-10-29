@@ -1,6 +1,6 @@
 'use client'
 
-import { CoinPrice } from '@/src/components/coin-price'
+import { CoinPrice } from '@repo/ui/components/coin-price'
 import { Alert, AlertDescription } from '@repo/ui/components/alert'
 import { Button } from '@repo/ui/components/button'
 import { Card, CardContent } from '@repo/ui/components/card'

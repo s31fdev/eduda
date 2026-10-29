@@ -247,6 +247,20 @@ export const paidLessonsLeft = (data: FinancesData) =>
 /** Порог, с которого родителю показываем предупреждение о низком балансе. */
 export const LOW_BALANCE = 2
 
+// ─── Магазин ────────────────────────────────────────────────────────
+
+/**
+ * Три товара для карточки магазина на главной — вокруг баланса: два самых дорогих
+ * из тех, на что коинов уже хватает, и ближайший, на который ещё нет. Хватает на
+ * всё — три самых дорогих, не хватает ни на что — три самых дешёвых. `items`
+ * отсортированы по возрастанию цены.
+ */
+export function shopPreview<T extends { price: number }>(items: T[], coins: number): T[] {
+  const firstOut = items.findIndex((item) => item.price > coins)
+  const end = Math.min(items.length, Math.max(firstOut === -1 ? items.length : firstOut + 1, 3))
+  return items.slice(Math.max(0, end - 3), end)
+}
+
 // ─── Подписи ────────────────────────────────────────────────────────
 
 /** Русская форма числительного: 1 занятие, 2 занятия, 5 занятий. */

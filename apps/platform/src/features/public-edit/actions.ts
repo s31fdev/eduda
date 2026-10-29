@@ -1,6 +1,7 @@
 'use server'
 
 import { prisma } from '@repo/db'
+import { CoinTxReason } from '@repo/db/enums'
 import { getUnpaidLessonsOfStudent } from '@/src/features/finances/unpaid.server'
 import {
   cancelMakeupTx,
@@ -15,9 +16,9 @@ import { isFeatureDisabled } from '@/src/lib/features/registry'
 import { publicAction } from '@/src/lib/safe-action'
 import { touchStudentData } from '@/src/lib/student-data'
 import { decryptStudentPassword } from '@/src/lib/student-password'
-import { DEFAULT_TZ, todayYmdInTz } from '@/src/lib/timezone'
+import { DEFAULT_TZ, startOfDayInTz, todayYmdInTz, ymdToLocalDate } from '@/src/lib/timezone'
 import { getAgeFromBirthDate, getGroupName, GROUP_LABEL_SELECT } from '@/src/lib/utils'
-import { addDaysYmd, parentAbsenceBlocker, schoolNow } from './lib'
+import { addDaysYmd, parentAbsenceBlocker, schoolNow, shopPreview } from './lib'
 import {
   CancelPublicMakeupSchema,
   CreatePublicMakeupSchema,
@@ -329,11 +330,65 @@ export const createPublicParent = publicAction
 
 // ─── Get student finances (read-only) ───────────────────────────────
 
+/**
+ * Что родитель видит как «+40 за октябрь»: посещения, награды и ручные правки
+ * школы. Покупки и их отмены — трата, а стартовый баланс перенесён из старой
+ * системы: ни то ни другое не заработано за месяц.
+ */
+const EARNED_COIN_REASONS = [
+  CoinTxReason.ATTENDANCE_PRESENT,
+  CoinTxReason.ATTENDANCE_REVERTED,
+  CoinTxReason.ACHIEVEMENT_CLAIM,
+  CoinTxReason.MANUAL_GRANT,
+  CoinTxReason.MANUAL_DEDUCT,
+]
+
+/**
+ * Магазин для главной кабинета: вход ребёнка, коины, начисленное с начала месяца
+ * по поясу школы и три товара вокруг баланса. Сам пароль сюда не кладём: его
+ * отдаёт `revealPublicStudentPassword` по кнопке и с записью в лог.
+ */
+async function getShopSummary(organizationId: number, studentId: number, tz: string) {
+  const account = await prisma.studentAccount.findFirst({
+    where: { studentId, organizationId },
+    select: { login: true, coins: true, passwordEnc: true },
+  })
+  if (!account) return null
+
+  const monthStart = startOfDayInTz(tz, ymdToLocalDate(`${todayYmdInTz(tz).slice(0, 7)}-01`))
+  const [earned, catalog] = await Promise.all([
+    prisma.coinTransaction.aggregate({
+      where: {
+        studentId,
+        organizationId,
+        reason: { in: EARNED_COIN_REASONS },
+        createdAt: { gte: monthStart },
+      },
+      _sum: { amount: true },
+    }),
+    // Каталог целиком: товаров у школы десятки, а окно вокруг баланса одним
+    // запросом не выбрать. Чего нет в наличии, ребёнок не купит — не показываем.
+    prisma.shopItem.findMany({
+      where: { organizationId, archivedAt: null, quantity: { gt: 0 } },
+      select: { id: true, name: true, price: true, imageUrl: true },
+      orderBy: [{ price: 'asc' }, { id: 'asc' }],
+    }),
+  ])
+
+  return {
+    login: account.login,
+    coins: account.coins,
+    hasPassword: account.passwordEnc != null,
+    earnedThisMonth: earned._sum.amount ?? 0,
+    items: shopPreview(catalog, account.coins),
+  }
+}
+
 export const getPublicStudentFinances = publicAction
   .metadata({ actionName: 'getPublicStudentFinances' })
   .inputSchema(PublicChildSchema)
   .action(async ({ parsedInput }) => {
-    const { studentId, organizationId } = await resolveChild(
+    const { studentId, organizationId, tz } = await resolveChild(
       parsedInput.token,
       parsedInput.studentId,
     )
@@ -342,20 +397,10 @@ export const getPublicStudentFinances = publicAction
     // иначе про долг узнаёт кто угодно, кроме того, кто платит.
     const unpaid = await getUnpaidLessonsOfStudent(organizationId, studentId)
 
-    // Вход в магазин и коины. Сам пароль сюда не кладём: его отдаёт
-    // `revealPublicStudentPassword` по кнопке и с записью в лог.
     const { disabledFeatures } = await getEffectiveFeatures(organizationId)
-    const account = isFeatureDisabled(disabledFeatures, 'shop')
+    const shop = isFeatureDisabled(disabledFeatures, 'shop')
       ? null
-      : await prisma.studentAccount.findFirst({
-          where: { studentId, organizationId },
-          select: { login: true, coins: true, passwordEnc: true },
-        })
-    const shop = account && {
-      login: account.login,
-      coins: account.coins,
-      hasPassword: account.passwordEnc != null,
-    }
+      : await getShopSummary(organizationId, studentId, tz)
 
     const student = await prisma.student.findUnique({
       where: { id: studentId },
