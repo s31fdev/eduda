@@ -338,71 +338,74 @@ export const getPublicStudentFinances = publicAction
       parsedInput.studentId,
     )
 
-    // Занятия, за которые школа ещё не получила денег. Родителю их видно намеренно:
-    // иначе про долг узнаёт кто угодно, кроме того, кто платит.
-    const unpaid = await getUnpaidLessonsOfStudent(organizationId, studentId)
-
-    // Вход в магазин и коины. Сам пароль сюда не кладём: его отдаёт
-    // `revealPublicStudentPassword` по кнопке и с записью в лог.
-    const { disabledFeatures } = await getEffectiveFeatures(organizationId)
-    const account = isFeatureDisabled(disabledFeatures, 'shop')
-      ? null
-      : await prisma.studentAccount.findFirst({
-          where: { studentId, organizationId },
-          select: { login: true, coins: true, passwordEnc: true },
-        })
+    // Чтения друг от друга не зависят — разом: layout грузит их на каждого ребёнка
+    // при каждом открытии ссылки.
+    const [unpaid, account, student] = await Promise.all([
+      // Занятия, за которые школа ещё не получила денег. Родителю их видно намеренно:
+      // иначе про долг узнаёт кто угодно, кроме того, кто платит.
+      getUnpaidLessonsOfStudent(organizationId, studentId),
+      // Вход в магазин и коины. Сам пароль сюда не кладём: его отдаёт
+      // `revealPublicStudentPassword` по кнопке и с записью в лог.
+      getEffectiveFeatures(organizationId).then(({ disabledFeatures }) =>
+        isFeatureDisabled(disabledFeatures, 'shop')
+          ? null
+          : prisma.studentAccount.findFirst({
+              where: { studentId, organizationId },
+              select: { login: true, coins: true, passwordEnc: true },
+            }),
+      ),
+      prisma.student.findUnique({
+        where: { id: studentId },
+        select: {
+          lessonsBalance: true,
+          totalLessons: true,
+          totalPayments: true,
+          wallets: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              lessonsBalance: true,
+              totalLessons: true,
+              totalPayments: true,
+              // Оплаты родителю показываются пакетами: сумма, дата и сколько из
+              // них осталось. Отменённые не показываем — денег за ними нет.
+              packages: {
+                where: { status: { not: 'CANCELLED' } },
+                select: {
+                  id: true,
+                  lessonCount: true,
+                  remaining: true,
+                  price: true,
+                  date: true,
+                  status: true,
+                  productName: true,
+                },
+                orderBy: [{ date: 'desc' }, { id: 'desc' }],
+              },
+              studentGroups: {
+                select: {
+                  status: true,
+                  group: {
+                    select: {
+                      name: true,
+                      course: { select: { name: true } },
+                      schedules: { select: { dayOfWeek: true, time: true } },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      }),
+    ])
     const shop = account && {
       login: account.login,
       coins: account.coins,
       hasPassword: account.passwordEnc != null,
     }
-
-    const student = await prisma.student.findUnique({
-      where: { id: studentId },
-      select: {
-        lessonsBalance: true,
-        totalLessons: true,
-        totalPayments: true,
-        wallets: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            lessonsBalance: true,
-            totalLessons: true,
-            totalPayments: true,
-            // Оплаты родителю показываются пакетами: сумма, дата и сколько из
-            // них осталось. Отменённые не показываем — денег за ними нет.
-            packages: {
-              where: { status: { not: 'CANCELLED' } },
-              select: {
-                id: true,
-                lessonCount: true,
-                remaining: true,
-                price: true,
-                date: true,
-                status: true,
-                productName: true,
-              },
-              orderBy: [{ date: 'desc' }, { id: 'desc' }],
-            },
-            studentGroups: {
-              select: {
-                status: true,
-                group: {
-                  select: {
-                    name: true,
-                    course: { select: { name: true } },
-                    schedules: { select: { dayOfWeek: true, time: true } },
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    })
 
     return student && { ...student, unpaid, shop }
   })
