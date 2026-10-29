@@ -1,8 +1,9 @@
 import { formatDateOnly } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
 import { CollapsibleContent } from '@repo/ui/components/collapsible'
-import { Ban, Bell, Check, Lock, Minus, RotateCcw, X } from 'lucide-react'
+import { Ban, Bell, Check, ChevronRight, Lock, Minus, RotateCcw, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import Link from 'next/link'
 import type { CabinetLesson, LessonState } from '../lib'
 
 /**
@@ -149,4 +150,35 @@ export function PrivacyNote({ many }: { many: boolean }) {
 
 export function SectionTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return <h2 className={cn('text-lg font-semibold', className)} {...props} />
+}
+
+/**
+ * Заголовок раздела главной со ссылкой «Подробнее» в его раздел кабинета.
+ * Отрицательный отступ у ссылки — палец попадает в 44 px, а строка не растёт.
+ */
+export function SectionHeader({
+  id,
+  title,
+  href,
+  label,
+}: {
+  id: string
+  title: string
+  href: string
+  /** Имя ссылки для экранного диктора: «Подробнее» без раздела ни о чём не говорит. */
+  label: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <SectionTitle id={id}>{title}</SectionTitle>
+      <Link
+        href={href}
+        aria-label={label}
+        className="text-primary -my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold"
+      >
+        Подробнее
+        <ChevronRight className="size-4" />
+      </Link>
+    </div>
+  )
 }

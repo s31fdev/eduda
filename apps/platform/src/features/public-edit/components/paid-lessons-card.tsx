@@ -1,17 +1,16 @@
 import { cn } from '@/src/lib/utils'
-import { ChevronRight } from 'lucide-react'
-import Link from 'next/link'
 import type { getPublicStudentFinances } from '../actions'
 import {
   type CabinetLesson,
   dayLabel,
   forecastPaid,
+  headPackage,
   LOW_BALANCE,
   lessonsWord,
   plural,
 } from '../lib'
 import { type CabinetWallet, walletLabel } from './balance-card'
-import { SectionTitle } from './cabinet-ui'
+import { SectionHeader } from './cabinet-ui'
 
 type FinancesData = NonNullable<Awaited<ReturnType<typeof getPublicStudentFinances>>['data']>
 
@@ -52,25 +51,24 @@ export function paidRows(
   today: string,
 ): PaidRow[] {
   // Ждущие оплаты — по кошельку, который их заплатит; его уже выбрал
-  // `cabinetLessons` тем же правилом, что списание.
+  // `cabinetLessons` тем же правилом, что списание. Занятия вне групп ребёнка
+  // (платное пробное до записи) в расписание не попали — их кошелёк на самой строке.
   const payer = new Map(lessons.map((lesson) => [lesson.att.id, lesson.walletId]))
   const waiting = new Map<number, number>()
   for (const lesson of data.unpaid) {
-    const walletId = payer.get(lesson.attendanceId)
+    const walletId = payer.get(lesson.attendanceId) ?? lesson.walletId
     if (walletId != null) waiting.set(walletId, (waiting.get(walletId) ?? 0) + 1)
   }
 
+  // `left` есть только у кошельков, которым впереди есть что тратить.
   const { left, lastPaid } = forecastPaid(ahead, data.wallets)
-  const scheduled = new Set(ahead.map((lesson) => lesson.walletId))
 
   return data.wallets
-    .filter((w) => w.lessonsBalance > 0 || scheduled.has(w.id) || waiting.has(w.id))
+    .filter((w) => w.lessonsBalance > 0 || left.has(w.id) || waiting.has(w.id))
     .map((wallet) => {
       const balance = Math.max(wallet.lessonsBalance, 0)
       // Доля — как точки в «Оплате»: от начала абонемента, который тратится сейчас.
-      const head = wallet.packages
-        .filter((p) => p.status === 'ACTIVE' && p.remaining > 0 && p.lessonCount > 0)
-        .at(-1)
+      const head = headPackage(wallet.packages)
       const used = head ? head.lessonCount - head.remaining : 0
       const tone = balance === 0 ? 'empty' : balance <= LOW_BALANCE ? 'low' : 'ok'
 
@@ -80,8 +78,6 @@ export function paidRows(
       if (balance === 0) {
         if (unpaid > 0)
           sub = `${unpaid} ${lessonsWord(unpaid)} ${plural(unpaid, 'ждёт', 'ждут', 'ждут')} оплаты`
-      } else if (!scheduled.has(wallet.id)) {
-        // Впереди занятий нет — «хватит на все» было бы правдой ни о чём.
       } else if ((left.get(wallet.id) ?? 0) > 0) {
         sub = 'Хватит на все занятия в расписании'
       } else if (last) {
@@ -112,18 +108,7 @@ export function paidRows(
 export function PaidLessonsSection({ rows, href }: { rows: PaidRow[]; href: string }) {
   return (
     <section aria-labelledby="balances-title" className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <SectionTitle id="balances-title">Балансы</SectionTitle>
-        {/* Отрицательный отступ — палец попадает в 44 px, а строка не растёт. */}
-        <Link
-          href={href}
-          aria-label="Подробнее об оплате"
-          className="text-primary -my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold"
-        >
-          Подробнее
-          <ChevronRight className="size-4" />
-        </Link>
-      </div>
+      <SectionHeader id="balances-title" title="Балансы" href={href} label="Подробнее об оплате" />
       <ul className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <li key={row.id} className="bg-card flex items-center gap-4 rounded-2xl border p-4">
@@ -147,24 +132,14 @@ function Ring({ row }: { row: PaidRow }) {
   // Размеры из макета C2: кольцо 60, дорожка 6.
   const r = 25
   const length = 2 * Math.PI * r
+  const track = { cx: 30, cy: 30, r, fill: 'none', strokeWidth: 6 }
   return (
     <span className="relative flex size-15 shrink-0 items-center justify-center">
       <svg aria-hidden viewBox="0 0 60 60" className="absolute inset-0 size-full -rotate-90">
-        <circle
-          cx={30}
-          cy={30}
-          r={r}
-          fill="none"
-          strokeWidth={6}
-          className="stroke-foreground/10"
-        />
+        <circle {...track} className="stroke-foreground/10" />
         {row.share > 0 && (
           <circle
-            cx={30}
-            cy={30}
-            r={r}
-            fill="none"
-            strokeWidth={6}
+            {...track}
             strokeLinecap="round"
             strokeDasharray={`${row.share * length} ${length}`}
             className={row.tone === 'low' ? 'stroke-warning' : 'stroke-primary'}

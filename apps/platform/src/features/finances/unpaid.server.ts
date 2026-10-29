@@ -22,6 +22,11 @@ export type UnpaidLesson = {
   isWarned: boolean | null
   /** Строка-отработка: её пропуск платный так же, как пропуск без предупреждения. */
   isMakeup: boolean
+  /**
+   * Кошелёк, выбранный на самой строке (платное пробное, разовое посещение). У
+   * обычного занятия — `null`: его платит кошелёк записи в группу.
+   */
+  walletId: number | null
 }
 
 export async function getUnpaidLessonsOfStudent(
@@ -36,6 +41,7 @@ export async function getUnpaidLessonsOfStudent(
       status: true,
       isWarned: true,
       makeupForAttendanceId: true,
+      walletId: true,
       lesson: {
         select: {
           id: true,
@@ -64,6 +70,7 @@ export async function getUnpaidLessonsOfStudent(
     status: r.status,
     isWarned: r.isWarned,
     isMakeup: r.makeupForAttendanceId !== null,
+    walletId: r.walletId,
   }))
 }
 

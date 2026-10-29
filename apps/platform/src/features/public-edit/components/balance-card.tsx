@@ -4,6 +4,7 @@ import {
   type CabinetLesson,
   dayLabel,
   forecastPaid,
+  headPackage,
   LOW_BALANCE,
   lessonsWord,
   paidLessonsLeft,
@@ -48,9 +49,9 @@ export function BalanceCard({
 
   // Школа заводит кошелёк под сезон и прежний оставляет активным, поэтому
   // активных обычно больше одного. В счёт идут те, где есть остаток или будущие
-  // занятия: пустой прошлогодний кошелёк родителю ничего не говорит.
-  const spentBy = new Set(ahead.map((lesson) => lesson.walletId))
-  const relevant = data.wallets.filter((w) => w.lessonsBalance > 0 || spentBy.has(w.id))
+  // занятия (`left` есть только у таких): пустой прошлогодний кошелёк родителю
+  // ничего не говорит.
+  const relevant = data.wallets.filter((w) => w.lessonsBalance > 0 || left.has(w.id))
 
   // Точки — по пакету, который тратится сейчас: серые прошли, цветные остались.
   // Имеет смысл, только когда все оплаченные занятия лежат в одном кошельке:
@@ -60,9 +61,7 @@ export function BalanceCard({
     relevant.length === 1 && relevant[0]!.lessonsBalance === Math.max(balance, 0)
       ? relevant[0]!
       : null
-  const head = single?.packages
-    .filter((p) => p.status === 'ACTIVE' && p.remaining > 0 && p.lessonCount > 0)
-    .at(-1)
+  const head = headPackage(single?.packages ?? [])
   const used = head ? head.lessonCount - head.remaining : 0
   const total = used + Math.max(balance, 0)
 

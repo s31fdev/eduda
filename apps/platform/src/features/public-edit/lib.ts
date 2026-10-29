@@ -177,7 +177,9 @@ export function attendanceOf(past: CabinetLesson[]) {
 /**
  * До какого занятия хватит оплаченного. Идём по будущему расписанию и тратим
  * остаток кошелька, который платит урок: предупреждённый пропуск урока не тратит,
- * отработка — тратит (она списывается всегда).
+ * отработка — тратит (она списывается всегда). В `left` — только кошельки, которым
+ * впереди есть что тратить: у остальных «хватит на все занятия» было бы правдой ни
+ * о чём, а отменённый урок или предупреждённый пропуск ничего не тратят.
  *
  * ponytail: платное пробное, неотмеченное прошлое и переносы между кошельками
  * прогноз не видит — это прикидка для родителя, а не расчёт списаний.
@@ -186,23 +188,24 @@ export function forecastPaid(
   ahead: CabinetLesson[],
   wallets: { id: number; lessonsBalance: number }[],
 ) {
-  const left = new Map(wallets.map((w) => [w.id, Math.max(0, w.lessonsBalance)]))
+  const balance = new Map(wallets.map((w) => [w.id, Math.max(0, w.lessonsBalance)]))
+  const left = new Map<number, number>()
   const lastPaid = new Map<number, string>()
-  const unpaid = new Set<number>()
 
   for (const lesson of ahead) {
     if (lesson.state !== 'pending' || lesson.walletId == null) continue
-    const n = left.get(lesson.walletId) ?? 0
-    if (n > 0) {
-      left.set(lesson.walletId, n - 1)
-      lastPaid.set(lesson.walletId, lesson.date)
-    } else {
-      unpaid.add(lesson.lessonId)
-    }
+    const n = left.get(lesson.walletId) ?? balance.get(lesson.walletId) ?? 0
+    left.set(lesson.walletId, Math.max(0, n - 1))
+    if (n > 0) lastPaid.set(lesson.walletId, lesson.date)
   }
 
-  return { left, lastPaid, unpaid }
+  return { left, lastPaid }
 }
+
+/** Абонемент, который тратится сейчас: самый ранний непотраченный. Пакеты идут от новых к старым. */
+export const headPackage = <P extends { status: string; remaining: number; lessonCount: number }>(
+  packages: P[],
+) => packages.filter((p) => p.status === 'ACTIVE' && p.remaining > 0 && p.lessonCount > 0).at(-1)
 
 const DAYS_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 
