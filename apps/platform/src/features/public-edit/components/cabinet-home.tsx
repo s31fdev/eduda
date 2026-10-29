@@ -21,6 +21,7 @@ import {
   useSelectedChild,
 } from '../queries'
 import { AbsenceDrawer, useAbsenceDrawer } from './absence-drawer'
+import { AttendanceCard } from './attendance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
 import { aheadChip, PrivacyNote, StateChip } from './cabinet-ui'
 import { PaidLessonsSection, paidRows } from './paid-lessons-card'
@@ -71,7 +72,7 @@ export default function CabinetHome({ token }: { token: string }) {
   // ближайшее занятие и проверки в кабинете смотрят на одни и те же часы.
   const { today, now, canMarkAbsence } = groups.data
   const lessons = cabinetLessons(groups.data.groups)
-  const { ahead } = splitByNow(lessons, now)
+  const { ahead, past } = splitByNow(lessons, now)
   const next = ahead.find((lesson) => lesson.state !== 'cancelled')
   const paid = paidRows(finances.data, lessons, ahead, today)
   const child = children.find((item) => item.id === studentId)!
@@ -79,12 +80,12 @@ export default function CabinetHome({ token }: { token: string }) {
   const aside = paid.length > 0 || shop != null
 
   return (
-    // На главной ближайшее занятие, оплаченные занятия и магазин (решения 28 и
-    // 29.10.2026): посещаемость и расписание — в «Занятиях».
+    // На главной ближайшее занятие, последние занятия, оплаченные занятия и
+    // магазин (решения 28 и 29.10.2026): расписание и вся история — в «Занятиях».
     // `items-start` — карточки не тянутся за соседней по высоте.
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
       {/* Правая колонка пустая — занятие тогда во всю ширину. */}
-      <div className={cn(!aside && 'md:col-span-2')}>
+      <div className={cn('flex flex-col gap-4 md:gap-6', !aside && 'md:col-span-2')}>
         {next ? (
           <NextLessonCard
             lesson={next}
@@ -98,16 +99,24 @@ export default function CabinetHome({ token }: { token: string }) {
             description="Как только школа поставит занятия в расписание, они появятся здесь."
           />
         )}
+        {/* Ключа по ребёнку не нужно: `SectionTransition` пересоздаёт раздел при его
+            смене, и открытое занятие или показанный пароль брата сестре не достаются. */}
+        <AttendanceCard
+          past={past}
+          now={now}
+          canMarkAbsence={canMarkAbsence}
+          href={`/${token}/attendance${childQuery}`}
+          onAbsence={drawer.openFor}
+        />
       </div>
 
       {aside && (
-        // На телефоне — сразу под занятием: оплата важнее магазина.
+        // На телефоне — под посещаемостью: оплата важнее магазина.
         <div className="flex flex-col gap-4 md:gap-6">
           {paid.length > 0 && (
             <PaidLessonsSection rows={paid} href={`/${token}/finances${childQuery}`} />
           )}
-          {/* Ключ — ребёнок: показанный пароль не должен пережить переключение на брата. */}
-          {shop && <ShopCard key={studentId} token={token} studentId={studentId!} shop={shop} />}
+          {shop && <ShopCard token={token} studentId={studentId!} shop={shop} />}
         </div>
       )}
 
@@ -213,7 +222,10 @@ function NextLessonCard({
 function HomeSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
-      <Skeleton className="h-64 rounded-3xl" />
+      <div className="flex flex-col gap-4 md:gap-6">
+        <Skeleton className="h-64 rounded-3xl" />
+        <Skeleton className="h-32 rounded-2xl" />
+      </div>
       <div className="flex flex-col gap-4 md:gap-6">
         <Skeleton className="h-32 rounded-2xl" />
         <Skeleton className="h-64 rounded-2xl" />

@@ -35,6 +35,12 @@
   --color-success: var(--success);
   --color-info: var(--info);
   --color-warning: var(--warning);
+  /* Не интент, а цвет пробного занятия в кабинете родителя. Синий (`info`) отдан
+     отработке: она у ученика бывает часто, пробное — один раз, и заметный цвет
+     достался редкой метке (решение 29.10.2026). В платформе «Пробный» синий —
+     кабинет расходится с ней намеренно. Не `primary`: в тёмной теме он остаётся
+     на 600 и мелким текстом не читается. */
+  --color-trial: var(--trial);
 }
 
 :root {
@@ -58,6 +64,7 @@
   --success: var(--color-green-600);
   --info: var(--color-blue-600);
   --warning: var(--color-amber-600);
+  --trial: var(--color-purple-600);
 }
 
 .dark {
@@ -69,6 +76,7 @@
   --success: var(--color-green-400);
   --info: var(--color-blue-400);
   --warning: var(--color-amber-400);
+  --trial: var(--color-purple-400);
 }
 
 @utility thin-scrollbar {

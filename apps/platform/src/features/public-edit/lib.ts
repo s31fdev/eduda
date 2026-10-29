@@ -397,6 +397,7 @@ export function monthLabel(ym: string, today: string) {
 }
 
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+export const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 
 /** «МС» — инициалы для аватара. */
 export const initials = (firstName: string, lastName: string | null) =>

@@ -1,7 +1,18 @@
 import { formatDateOnly } from '@/src/lib/timezone'
 import { cn } from '@/src/lib/utils'
 import { CollapsibleContent } from '@repo/ui/components/collapsible'
-import { Ban, Bell, Check, ChevronRight, Lock, Minus, RotateCcw, X } from 'lucide-react'
+import {
+  Ban,
+  Bell,
+  BellOff,
+  Check,
+  ChevronRight,
+  Lock,
+  Minus,
+  RotateCcw,
+  Ticket,
+  X,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import type { CabinetLesson, LessonState } from '../lib'
@@ -81,13 +92,19 @@ export function LessonLine({
   )
 }
 
-export type ChipKind = LessonState | 'makeup'
+export type ChipKind = LessonState | 'unwarned' | 'makeup' | 'trial'
 
-const CHIPS: Record<ChipKind, { label: string; icon: LucideIcon; className: string }> = {
+export const CHIPS: Record<ChipKind, { label: string; icon: LucideIcon; className: string }> = {
   present: { label: 'Посещено', icon: Check, className: 'bg-success/15 text-success' },
   absent: { label: 'Пропуск', icon: X, className: 'bg-destructive/15 text-destructive' },
   warned: { label: 'Предупредили', icon: Bell, className: 'bg-warning/15 text-warning' },
+  unwarned: {
+    label: 'Без предупреждения',
+    icon: BellOff,
+    className: 'bg-muted text-muted-foreground',
+  },
   makeup: { label: 'Отработка', icon: RotateCcw, className: 'bg-info/15 text-info' },
+  trial: { label: 'Пробное', icon: Ticket, className: 'bg-trial/15 text-trial' },
   pending: { label: 'Не отмечено', icon: Minus, className: 'bg-muted text-muted-foreground' },
   cancelled: { label: 'Отменено', icon: Ban, className: 'bg-muted text-muted-foreground' },
 }
