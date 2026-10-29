@@ -96,7 +96,10 @@ export function AbsenceDrawer({
 }: AbsenceDrawerProps) {
   const isMobile = useIsMobile()
   const [picking, setPicking] = useState(false)
-  const lesson = lessons.find((l) => l.lessonId === lessonId) ?? null
+  // Строку-отработку открываем через пропуск, который она отрабатывает: всё, что с
+  // ней можно сделать, — отменить, — делается там.
+  const found = lessons.find((l) => l.lessonId === lessonId)
+  const lesson = found?.makeupFor ?? found ?? null
 
   const handleOpenChange = (value: boolean) => {
     if (!value) setPicking(false)

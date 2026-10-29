@@ -516,18 +516,20 @@ export function parentAbsenceBlocker(
 
 /**
  * Есть ли родителю что сделать с пропуском: снять свою отметку, записаться на
- * отработку или отменить свою отработку. По ней кнопка открывает шторку и на
- * главной, и в «Посещаемости» — иначе два места разойдутся. Выключенную школой
- * отметку пропусков (`canMarkAbsence`) проверяет вызывающий.
+ * отработку или отменить свою отработку. Строку-отработку проверяет через её
+ * пропуск — шторка откроет его же. По ней кнопка открывает шторку и на главной, и в
+ * «Посещаемости» — иначе места разойдутся. Выключенную школой отметку пропусков
+ * (`canMarkAbsence`) проверяет вызывающий.
  */
 export function absenceActionable(lesson: CabinetLesson, now: SchoolNow) {
+  const source = lesson.makeupFor ?? lesson
   // Прогул тоже: за прошедший пропуск без предупреждения можно записаться на отработку.
-  if (lesson.state !== 'warned' && lesson.state !== 'absent') return false
+  if (source.state !== 'warned' && source.state !== 'absent') return false
   const ok = (l: CabinetLesson, action: ParentAttendanceAction) =>
     parentAbsenceBlocker(l.att, l, now, action) === null
   return (
-    ok(lesson, 'unmark') ||
-    ok(lesson, 'makeup') ||
-    (lesson.makeup != null && ok(lesson.makeup, 'cancelMakeup'))
+    ok(source, 'unmark') ||
+    ok(source, 'makeup') ||
+    (source.makeup != null && ok(source.makeup, 'cancelMakeup'))
   )
 }

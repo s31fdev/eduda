@@ -86,16 +86,13 @@ export default function AttendanceSection({ token }: { token: string }) {
 
   // Прошедший пропуск открывается в шторку, пока его можно отработать: не старше
   // месяца, с предупреждением или без.
-  const pastRow = (lesson: CabinetLesson) => {
-    const source = lesson.makeupFor ?? lesson
-    return {
-      canMakeup: can(lesson, 'makeup'),
-      open:
-        canMarkAbsence && absenceActionable(source, now)
-          ? () => drawer.openFor(source.lessonId)
-          : null,
-    }
-  }
+  const pastRow = (lesson: CabinetLesson) => ({
+    canMakeup: can(lesson, 'makeup'),
+    open:
+      canMarkAbsence && absenceActionable(lesson, now)
+        ? () => drawer.openFor(lesson.lessonId)
+        : null,
+  })
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -158,8 +155,7 @@ export default function AttendanceSection({ token }: { token: string }) {
             {(showAll ? ahead : ahead.slice(0, AHEAD_VISIBLE)).map((lesson) => {
               // Строку пропуска (и его отработки) открываем в шторку, если с
               // отметкой ещё можно что-то сделать: снять, записать или отменить отработку.
-              const source = lesson.makeupFor ?? lesson
-              const opens = canMarkAbsence && absenceActionable(source, now)
+              const opens = canMarkAbsence && absenceActionable(lesson, now)
 
               const line = (
                 <LessonLine
@@ -186,7 +182,7 @@ export default function AttendanceSection({ token }: { token: string }) {
                   {opens ? (
                     <button
                       type="button"
-                      onClick={() => drawer.openFor(source.lessonId)}
+                      onClick={() => drawer.openFor(lesson.lessonId)}
                       className="hover:bg-muted/60 flex w-full cursor-pointer items-center gap-3.5 px-4 py-3 text-left transition-colors"
                     >
                       {line}
