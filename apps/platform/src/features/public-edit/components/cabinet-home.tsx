@@ -9,6 +9,7 @@ import {
   type CabinetLesson,
   cabinetLessons,
   parentAbsenceBlocker,
+  type ParentAttendanceAction,
   type SchoolNow,
   splitByNow,
   timeRange,
@@ -139,18 +140,22 @@ function NextLessonCard({
   onAbsence: () => void
 }) {
   const today = now.date
-  const canMark = canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, 'mark') === null
+  const can = (action: ParentAttendanceAction) =>
+    canMarkAbsence && parentAbsenceBlocker(lesson.att, lesson, now, action) === null
+  // Строку-отработку предикат проверяет через её пропуск, а шторка его и откроет.
   const canChange = canMarkAbsence && absenceActionable(lesson, now)
   // Пропуск и отработка — тем же бейджем, что в «Впереди». Пояснений текстом в
   // карточке нет (решение 28.10.2026): деньги объясняют шторка и «Занятия».
   const chip = aheadChip(lesson)
 
   // Заголовок — во всю ширину, кнопка — в строке с полями: длинная дата
-  // переносится сама и кнопку не двигает.
+  // переносится сама и кнопку не двигает. В строку кнопка встаёт по ширине самой
+  // карточки, а не окна: на планшете рядом с правой колонкой карточке 288 px, и
+  // поля сжались бы под кнопкой в 24 px.
   return (
     <section
       aria-labelledby="next-title"
-      className="bg-primary text-primary-foreground flex flex-col gap-3 rounded-3xl p-5 md:p-7"
+      className="bg-primary text-primary-foreground @container flex flex-col gap-3 rounded-3xl p-5 md:p-7"
     >
       <span className="flex items-center justify-between gap-3">
         <span id="next-title" className="text-sm font-medium opacity-85">
@@ -169,11 +174,11 @@ function NextLessonCard({
         </span>
       </span>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
-        <span className="flex min-w-0 flex-col gap-1.5 text-sm opacity-85 md:flex-row md:flex-wrap md:gap-x-5">
+      <div className="flex flex-col gap-4 @lg:flex-row @lg:items-center @lg:justify-between @lg:gap-6">
+        <span className="flex min-w-0 flex-col gap-1.5 text-sm opacity-85 @md:flex-row @md:flex-wrap @md:gap-x-5">
           <span className="flex items-center gap-2">
             <BookOpen className="size-4 shrink-0" />
-            <span className="sr-only">Группа:</span>
+            <span className="sr-only">Курс:</span>
             {lesson.course}
           </span>
           {lesson.teachers.length > 0 && (
@@ -189,18 +194,15 @@ function NextLessonCard({
             {lesson.location}
           </span>
         </span>
-        {(canMark || canChange) && (
+        {(can('mark') || canChange) && (
           <Button
             variant="secondary"
-            className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold md:w-60 md:shrink-0"
+            className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 h-12 rounded-xl text-base font-semibold @lg:w-60 @lg:shrink-0"
             onClick={onAbsence}
           >
-            {/* Отметку школы родитель не снимет, ему остаётся только отработка. */}
-            {canMark
-              ? 'Не сможем прийти'
-              : lesson.att.parentMarkedAt != null
-                ? 'Изменить отметку'
-                : 'Отработка'}
+            {/* Снять можно только свою отметку и только до срока: за полчаса до
+                начала и потом родителю остаётся отработка. */}
+            {can('mark') ? 'Не сможем прийти' : can('unmark') ? 'Изменить отметку' : 'Отработка'}
           </Button>
         )}
       </div>
