@@ -74,25 +74,22 @@ function useSectionLinks(token: string) {
  * Шапка кабинета. На телефоне — школа, заголовок раздела и выбор ребёнка (разделы
  * живут в нижнем баре). С `md` — полоса с разделами сверху, заголовок под ней.
  *
- * Заголовок главной — имя ребёнка: она про него целиком. Выбор ребёнка зависит от
- * числа детей: одному не нужен, двоих видно сразу (сегменты), трёх и больше —
+ * У главной видимого заголовка нет — ни имени ребёнка, ни его групп (решение
+ * 29.10.2026); для читалки экрана он остаётся. Выбор ребёнка зависит от числа
+ * детей: одному не нужен, двоих видно сразу (сегменты), трёх и больше —
  * выпадающим списком, иначе сегменты сжимаются до нечитаемых.
  */
 export function CabinetHeader({ token }: { token: string }) {
   const links = useSectionLinks(token)
   const { data, isPending } = useCabinetDataQuery(token)
-  const { children, studentId } = useSelectedChild(token)
+  const { children } = useSelectedChild(token)
 
   const section = links.find((link) => link.active)
   const isHome = section?.seg === ''
-  const child = children.find((item) => item.id === studentId)
   const many = children.length > 2
   const school = data?.organizationName ?? ''
 
-  // Без детей у главной нет имени — тогда заголовок, как у остальных разделов,
-  // её название, а не заглушка загрузки, которая никогда не сменится.
-  const title =
-    (isHome && child ? getFullName(child.firstName, child.lastName) : null) ?? section?.label
+  const title = section?.label
 
   return (
     // `cabinet-header` держит шапку над сменой раздела (cabinet.css), фон страницы
@@ -145,19 +142,21 @@ export function CabinetHeader({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="cabinet-centered mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6 md:pt-8">
+      {/* На десктопе у главной здесь ничего не видно — без отступа, иначе под
+          полосой разделов остаётся пустая полоса. */}
+      <div
+        className={cn(
+          'cabinet-centered mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6',
+          isHome ? 'md:pt-0' : 'md:pt-8',
+        )}
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-muted-foreground text-sm font-medium md:hidden">
               {isPending ? <Skeleton className="h-4 w-32" /> : school}
             </span>
-            {isHome && many ? (
-              <>
-                <h1 className="md:hidden">
-                  <ChildMenu token={token} large />
-                </h1>
-                <h1 className="hidden text-3xl font-semibold tracking-tight md:block">{title}</h1>
-              </>
+            {isHome ? (
+              <h1 className="sr-only">{title}</h1>
             ) : !isPending && title ? (
               // Ключ по тексту: заголовок проявляется вместе с содержимым раздела.
               <h1
@@ -180,7 +179,7 @@ export function CabinetHeader({ token }: { token: string }) {
             <ChildTabs token={token} />
           </div>
         )}
-        {many && !isHome && (
+        {many && (
           <div className="md:hidden">
             <ChildMenu token={token} />
           </div>
@@ -232,11 +231,8 @@ function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
   )
 }
 
-/**
- * Трое детей и больше — выпадающий список. `large` — триггер вместо заголовка
- * главной: там он и есть имя ребёнка.
- */
-function ChildMenu({ token, large }: { token: string; large?: boolean }) {
+/** Трое детей и больше — выпадающий список. */
+function ChildMenu({ token }: { token: string }) {
   const { children, studentId, setChild } = useSelectedChild(token)
   const current = children.find((child) => child.id === studentId)
   if (!current) return null
@@ -245,19 +241,9 @@ function ChildMenu({ token, large }: { token: string; large?: boolean }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Выбрать ребёнка"
-        className={cn(
-          'hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl transition-colors',
-          large ? '-ml-2 h-11 pr-2.5 pl-2' : 'bg-card h-11 border px-3',
-        )}
+        className="hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] bg-card flex h-11 max-w-full cursor-pointer items-center gap-2.5 rounded-xl border px-3 transition-colors"
       >
-        <span
-          className={cn(
-            'truncate',
-            large ? 'text-xl font-semibold tracking-tight' : 'text-sm font-medium',
-          )}
-        >
-          {large ? getFullName(current.firstName, current.lastName) : current.firstName}
-        </span>
+        <span className="truncate text-sm font-medium">{current.firstName}</span>
         <ChevronDown className="text-muted-foreground size-5 shrink-0" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">

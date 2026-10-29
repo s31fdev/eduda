@@ -8,7 +8,6 @@ import {
   absenceActionable,
   type CabinetLesson,
   cabinetLessons,
-  groupSummaries,
   parentAbsenceBlocker,
   type SchoolNow,
   splitByNow,
@@ -83,14 +82,6 @@ export default function CabinetHome({ token }: { token: string }) {
     // 29.10.2026): посещаемость и расписание — в «Занятиях».
     // `items-start` — карточки не тянутся за соседней по высоте.
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-6">
-      {/* На десктопе под именем — чем ребёнок занят; на телефоне это есть в карточках. */}
-      <p className="text-muted-foreground -mt-2 hidden text-base md:col-span-2 md:block">
-        {groupSummaries(groups.data.groups, today)
-          .filter((g) => g.active)
-          .map((g) => [g.course, g.schedule, g.teacher].filter(Boolean).join(' · '))
-          .join('; ')}
-      </p>
-
       {/* Правая колонка пустая — занятие тогда во всю ширину. */}
       <div className={cn(!aside && 'md:col-span-2')}>
         {next ? (
