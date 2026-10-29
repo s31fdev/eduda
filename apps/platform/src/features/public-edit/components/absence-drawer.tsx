@@ -297,11 +297,14 @@ function DoneStep({
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-base font-semibold">
-                    Отработка: {weekday(makeup.date).toLowerCase()}, {formatDate(makeup.date)},{' '}
-                    {makeup.time}
+                    {makeup.state === 'cancelled' ? 'Отработка отменена' : 'Отработка'}:{' '}
+                    {weekday(makeup.date).toLowerCase()}, {formatDate(makeup.date)}, {makeup.time}
                   </span>
                   <span className="text-muted-foreground text-sm">
-                    {makeup.group} · {makeup.location}
+                    {/* Отмена урока отработку не снимает, а другую дату кабинет не запишет. */}
+                    {makeup.state === 'cancelled'
+                      ? 'Занятие отменила школа — свяжитесь с ней, чтобы выбрать другую дату'
+                      : `${makeup.group} · ${makeup.location}`}
                   </span>
                 </span>
               </div>

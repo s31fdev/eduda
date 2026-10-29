@@ -317,7 +317,10 @@ function monthSummary(lessons: CabinetLesson[]) {
 function aheadSub(lesson: CabinetLesson, canMakeup: boolean) {
   if (lesson.state === 'cancelled') return 'Занятие отменено школой'
   if (lesson.state === 'warned') {
-    if (lesson.makeup) return `Не спишется · отработка ${formatDate(lesson.makeup.date)}`
+    if (lesson.makeup) {
+      const cancelled = lesson.makeup.state === 'cancelled' ? ' отменена' : ''
+      return `Не спишется · отработка ${formatDate(lesson.makeup.date)}${cancelled}`
+    }
     return canMakeup ? 'Не спишется · можно отработать' : 'Не спишется'
   }
   if (lesson.makeupFor) return `Взамен ${formatDate(lesson.makeupFor.date)} · ${lesson.group}`
@@ -333,7 +336,9 @@ function pastSub(lesson: CabinetLesson, canMakeup: boolean) {
     makeup &&
     (makeup.state === 'present'
       ? `отработали ${formatDate(makeup.date)}`
-      : `отработка ${formatDate(makeup.date)}`)
+      : makeup.state === 'cancelled'
+        ? `отработка ${formatDate(makeup.date)} отменена`
+        : `отработка ${formatDate(makeup.date)}`)
 
   if (lesson.state === 'cancelled') return 'Занятие отменено школой'
   if (lesson.state === 'pending') return 'Преподаватель ещё не отметил'
