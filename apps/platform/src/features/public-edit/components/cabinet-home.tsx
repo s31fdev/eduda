@@ -167,7 +167,11 @@ function NextLessonCard({
       className="bg-primary text-primary-foreground @container flex flex-col gap-3 rounded-3xl p-5 md:p-7"
     >
       <span className="flex items-center justify-between gap-3">
-        <span id="next-title" className="text-sm font-medium opacity-85">
+        {/* Подпись плашкой того же размера, что бейдж статуса справа (решение 30.10.2026). */}
+        <span
+          id="next-title"
+          className="bg-primary-foreground/15 inline-flex h-6.5 items-center rounded-full px-2.5 text-xs font-semibold"
+        >
           Следующее занятие
         </span>
         {chip && (

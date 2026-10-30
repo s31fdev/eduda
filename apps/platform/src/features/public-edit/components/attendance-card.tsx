@@ -98,8 +98,12 @@ export function AttendanceCard({
 
   const selected = strip.find((lesson) => lesson.att.id === selectedId)
 
+  // Заголовок — внутри карточки, как у всех карточек главной (решение 30.10.2026).
   return (
-    <section aria-labelledby="attendance-title" className="flex flex-col gap-2.5">
+    <section
+      aria-labelledby="attendance-title"
+      className="bg-card flex flex-col gap-4 rounded-2xl border p-5"
+    >
       <SectionHeader
         id="attendance-title"
         title="Посещаемость"
@@ -107,17 +111,14 @@ export function AttendanceCard({
         label="Подробнее о занятиях"
       />
 
-      <div className="bg-card rounded-2xl border p-5">
+      <div>
         <ol aria-label="Последние занятия" className="grid grid-cols-6 gap-1.5 lg:grid-cols-8">
           {strip.map((lesson, index) => {
             const { value, badges, marks } = marksOf(lesson)
             const chip = CHIPS[value]
             const on = lesson.att.id === selectedId
             return (
-              <li
-                key={lesson.att.id}
-                className={cn('flex flex-col gap-1.5', narrowHidden(index) && 'max-lg:hidden')}
-              >
+              <li key={lesson.att.id} className={cn(narrowHidden(index) && 'max-lg:hidden')}>
                 <button
                   type="button"
                   aria-label={[
@@ -130,11 +131,18 @@ export function AttendanceCard({
                   aria-controls={panelId}
                   onClick={() => setSelectedId(on ? null : lesson.att.id)}
                   className={cn(
-                    'aria-pressed:outline-foreground relative flex h-11 cursor-pointer items-center justify-center rounded-lg aria-pressed:outline-2 aria-pressed:outline-offset-2',
+                    'aria-pressed:outline-foreground relative flex h-14 w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-xl tabular-nums aria-pressed:outline-2 aria-pressed:outline-offset-2',
                     chip.className,
                   )}
                 >
-                  <chip.icon className="size-4" strokeWidth={2.5} />
+                  {/* Дата — внутри плитки, цвет — что было (решение 30.10.2026). Месяц у
+                      каждой плитки: полоска часто идёт через стык месяцев. */}
+                  <span className="text-base leading-none font-semibold">
+                    {formatDateOnly(lesson.date, { day: 'numeric' })}
+                  </span>
+                  <span className="text-xs leading-none font-medium">
+                    {formatDateOnly(lesson.date, { month: 'short' }).replace('.', '')}
+                  </span>
                   {badges.length > 0 && (
                     <span aria-hidden className="absolute -top-1.5 -right-1.5 flex -space-x-1.5">
                       {badges.map((kind) => {
@@ -157,16 +165,6 @@ export function AttendanceCard({
                     </span>
                   )}
                 </button>
-                {/* «9 июл»: месяц у каждой плитки — полоска часто идёт через стык месяцев. */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    'text-center text-xs whitespace-nowrap tabular-nums',
-                    on ? 'text-foreground font-semibold' : 'text-muted-foreground',
-                  )}
-                >
-                  {formatDateOnly(lesson.date, { day: 'numeric', month: 'short' }).replace('.', '')}
-                </span>
               </li>
             )
           })}

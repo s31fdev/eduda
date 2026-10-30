@@ -99,19 +99,23 @@ export function paidRows(
 }
 
 /**
- * «Балансы» на главной: карточка на кошелёк, одна она или их пять. В кольце —
- * сколько оплаченных занятий осталось, дуга — та же величина долей абонемента.
- * Жёлтые дуга и цифра — занятия кончаются; оплаченных нет — пустое кольцо и
- * красный ноль. В «Оплату» ведёт одна ссылка у заголовка: карточки вели бы на ту
- * же страницу, сколько бы их ни было (решение 29.10.2026).
+ * «Балансы» на главной: одна карточка с заголовком внутри, в ней строка на
+ * кошелёк, один он или их пять (решение 30.10.2026). В кольце — сколько
+ * оплаченных занятий осталось, дуга — та же величина долей абонемента. Жёлтые дуга
+ * и цифра — занятия кончаются; оплаченных нет — пустое кольцо и красный ноль. В
+ * «Оплату» ведёт одна ссылка у заголовка: строки вели бы на ту же страницу, сколько
+ * бы их ни было (решение 29.10.2026).
  */
 export function PaidLessonsSection({ rows, href }: { rows: PaidRow[]; href: string }) {
   return (
-    <section aria-labelledby="balances-title" className="flex flex-col gap-2.5">
+    <section
+      aria-labelledby="balances-title"
+      className="bg-card flex flex-col gap-4 rounded-2xl border p-5"
+    >
       <SectionHeader id="balances-title" title="Балансы" href={href} label="Подробнее об оплате" />
-      <ul className="flex flex-col gap-2.5">
+      <ul className="flex flex-col gap-4">
         {rows.map((row) => (
-          <li key={row.id} className="bg-card flex items-center gap-4 rounded-2xl border p-4">
+          <li key={row.id} className="flex items-center gap-4">
             <Ring row={row} />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-base font-semibold">{row.label}</span>

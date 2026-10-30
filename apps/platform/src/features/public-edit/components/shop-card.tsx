@@ -1,13 +1,13 @@
 'use client'
 
-import { shopUrl } from '@/src/lib/utils'
+import { cn, shopUrl } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import { ArrowUpRight, Copy, Eye, EyeOff, Loader } from 'lucide-react'
 import { toast } from 'sonner'
 import type { getPublicStudentFinances } from '../actions'
 import { plural } from '../lib'
 import { useRevealPublicStudentPasswordMutation } from '../queries'
-import { SectionTitle } from './cabinet-ui'
+import { PRIMARY_TEXT, SectionTitle } from './cabinet-ui'
 
 type FinancesData = NonNullable<Awaited<ReturnType<typeof getPublicStudentFinances>>['data']>
 type Shop = NonNullable<FinancesData['shop']>
@@ -29,9 +29,13 @@ export function ShopCard({
   const reveal = useRevealPublicStudentPasswordMutation()
   const password = reveal.data?.password
 
-  // Заголовок над карточкой, как у «Балансов»: разделы главной подписаны одинаково.
+  // Заголовок внутри карточки, как у «Балансов» и «Посещаемости»: карточки главной
+  // устроены одинаково (решение 30.10.2026).
   return (
-    <section aria-labelledby="shop-title" className="flex flex-col gap-2.5">
+    <section
+      aria-labelledby="shop-title"
+      className="bg-card flex flex-col gap-4 rounded-2xl border p-5"
+    >
       <div className="flex items-center justify-between gap-3">
         <SectionTitle id="shop-title">Магазин</SectionTitle>
         {/* Логина и пароля в адресе нет: ссылки пересылают, а адрес оседает в истории.
@@ -41,13 +45,16 @@ export function ShopCard({
           target="_blank"
           rel="noreferrer"
           aria-label="Открыть магазин"
-          className="text-primary -my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold"
+          className={cn(
+            PRIMARY_TEXT,
+            '-my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold',
+          )}
         >
           Открыть
           <ArrowUpRight className="size-4" />
         </a>
       </div>
-      <div className="bg-card flex flex-col gap-3 rounded-2xl border p-5">
+      <div className="flex flex-col gap-3">
         <span className="text-3xl leading-tight font-semibold tracking-tight">
           {shop.coins}{' '}
           <span className="text-lg font-medium">
