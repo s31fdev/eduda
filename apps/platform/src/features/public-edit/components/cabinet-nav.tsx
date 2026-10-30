@@ -14,13 +14,13 @@ import {
 } from '@repo/ui/components/dropdown-menu'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { SwitchThemeButton } from '@repo/ui/components/switch-theme-button'
-import { Tabs, TabsIndicator, TabsList, TabsTrigger } from '@repo/ui/components/tabs'
-import { ChevronDown } from 'lucide-react'
-import { motion, MotionConfig, useReducedMotion } from 'motion/react'
+import { Baby, ChevronsUpDown } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 import { useCabinetDataQuery, useSelectedChild } from '../queries'
+import { PRIMARY_TEXT } from './cabinet-ui'
 
 /** Что умеют иконки lucide-animated: проиграть анимацию по команде. */
 type IconHandle = { startAnimation: () => void; stopAnimation: () => void }
@@ -30,22 +30,51 @@ type AnimatedIcon = React.ForwardRefExoticComponent<
 
 type Section = { seg: string; label: string; icon: AnimatedIcon }
 
-/**
- * Подсветка раздела переезжает между пунктами с той же скоростью и кривой, что
- * пилюли вкладок платформы (`--duration-tab`, `--ease-tab` в eduda.css): motion
- * не читает CSS-переменные, поэтому значения повторены здесь.
- */
-const PILL_TRANSITION = { type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] } as const
-
-// Четыре раздела влезают в нижний бар даже на самом узком телефоне, поэтому
-// логики переполнения (как в кабинете ученика) здесь нет. Адреса прежние —
-// ссылки на них уже ушли родителям.
+// Четыре пункта нижнего бара (три раздела и профиль) влезают даже на самом узком
+// телефоне, поэтому логики переполнения (как в кабинете ученика) здесь нет.
+// Адреса прежние — ссылки на них уже ушли родителям.
 const SECTIONS: Section[] = [
   { seg: '', label: 'Главная', icon: HomeIcon },
   { seg: '/attendance', label: 'Занятия', icon: CalendarCheckIcon },
   { seg: '/finances', label: 'Оплата', icon: WalletIcon },
-  { seg: '/profile', label: 'Профиль', icon: UserIcon },
 ]
+
+// На десктопе профиль — не раздел в ряду, а кнопка рядом с выбором ребёнка: это
+// данные того, кого выбрали. На телефоне он остаётся последней вкладкой нижнего
+// бара (решения 30.10.2026).
+const PROFILE: Section = { seg: '/profile', label: 'Профиль', icon: UserIcon }
+
+/**
+ * Цвет кружка ребёнка — по месту ребёнка в семье: соседи по списку всегда
+ * разного цвета, и в шапке и в меню детей различаешь, не читая имён.
+ */
+const TINTS = [
+  'bg-amber-500/20 text-amber-800 dark:text-amber-300',
+  'bg-sky-500/20 text-sky-800 dark:text-sky-300',
+  'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300',
+  'bg-rose-500/20 text-rose-800 dark:text-rose-300',
+]
+
+/*
+ * Радиус в шапке один на всё — `rounded-xl` (решение 30.10.2026): разделы,
+ * профиль, тема, плашка ребёнка, меню ребёнка и его пункты, заглушки. Круглые
+ * только аватары детей. Меню с полем 4 px поэтому скруглено не параллельно своим
+ * пунктам — так решено: одинаковость важнее. Нижний бар телефона — не шапка, у
+ * него свои пилюли.
+ */
+
+/**
+ * Плашка ребёнка и пункт его меню — один размер, и открытое меню выглядит
+ * продолжением плашки. На десктопе это рост остальной полосы, 44 px, как у
+ * разделов и профиля; на телефоне крупнее — под палец.
+ */
+const CHILD_ROW = 'min-h-14 gap-3 rounded-xl py-1.5 pl-1.5 lg:min-h-11 lg:py-1'
+const CHILD_TEXT = 'flex min-w-0 flex-col gap-0.5 lg:gap-0'
+const CHILD_NAME = 'text-base font-semibold lg:text-sm'
+
+/** Тема — без рамки: рядом с ребёнком и профилем она вторична. */
+const THEME_BUTTON_CLASS =
+  "text-muted-foreground size-11 rounded-xl [&_svg:not([class*='size-'])]:size-5"
 
 /**
  * Ссылки разделов. `<Link>` не сохраняет query-строку, а выбранный ребёнок
@@ -60,33 +89,38 @@ function useSectionLinks(token: string) {
   // дописывает прокси. Ссылки поэтому пишутся без него, как и на страницах школы.
   const base = `/${token}`
 
-  return SECTIONS.map((section) => {
+  const link = (section: Section) => {
     const path = `${base}${section.seg}`
     return {
       ...section,
       href: `${path}${query}`,
       active: path === base ? pathname === base : pathname.startsWith(path),
     }
-  })
+  }
+
+  return { sections: SECTIONS.map(link), profile: link(PROFILE) }
 }
 
+type SectionLink = ReturnType<typeof useSectionLinks>['profile']
+
 /**
- * Шапка кабинета. На телефоне — школа, заголовок раздела и выбор ребёнка (разделы
- * живут в нижнем баре). С `md` — полоса с разделами сверху, заголовок под ней.
+ * Шапка кабинета — одна полоса (решение 30.10.2026). С `lg` слева школа и
+ * разделы, справа ребёнок, профиль и тема. На телефоне и планшете разделы и
+ * профиль живут в нижнем баре, а в полосе — ребёнок и тема: десктопной полосе
+ * нужно около 920 px, и на 768 она ломалась на две строки.
  *
- * У главной видимого заголовка нет — ни имени ребёнка, ни его групп (решение
- * 29.10.2026); для читалки экрана он остаётся. Выбор ребёнка зависит от числа
- * детей: одному не нужен, двоих видно сразу (сегменты), трёх и больше —
- * выпадающим списком, иначе сегменты сжимаются до нечитаемых.
+ * Выбор ребёнка — выпадающий список, когда детей больше одного; одного шапка
+ * просто называет. У главной видимого заголовка нет — ни имени ребёнка, ни его
+ * групп (решение 29.10.2026); для читалки экрана он остаётся. Заголовки
+ * остальных разделов — под полосой.
  */
 export function CabinetHeader({ token }: { token: string }) {
-  const links = useSectionLinks(token)
+  const { sections, profile } = useSectionLinks(token)
   const { data, isPending } = useCabinetDataQuery(token)
   const { children } = useSelectedChild(token)
 
-  const section = links.find((link) => link.active)
+  const section = [...sections, profile].find((link) => link.active)
   const isHome = section?.seg === ''
-  const many = children.length > 2
   const school = data?.organizationName ?? ''
 
   const title = section?.label
@@ -95,177 +129,153 @@ export function CabinetHeader({ token }: { token: string }) {
     // `cabinet-header` держит шапку над сменой раздела (cabinet.css), фон страницы
     // на ней — чтобы гаснущий раздел прокрученной страницы не просвечивал сквозь шапку.
     <header className="cabinet-header bg-inherit">
-      <div className="bg-card hidden border-b md:block">
-        <div className="cabinet-centered mx-auto flex min-h-16 max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-2.5">
+      <div className="bg-card hidden border-b lg:block">
+        <div className="cabinet-centered mx-auto flex max-w-280 flex-wrap items-center gap-x-7 gap-y-2 px-6 py-3">
           <Link
-            href={links[0]!.href}
-            className="flex min-h-11 items-center text-base font-semibold"
+            href={sections[0]!.href}
+            className="flex min-h-11 items-center gap-2.5 text-base font-semibold tracking-tight"
           >
-            {isPending ? <Skeleton className="h-4 w-32" /> : school}
+            {isPending ? <Skeleton className="h-4 w-32 rounded-xl" /> : school}
           </Link>
 
-          <MotionConfig reducedMotion="user">
-            <nav aria-label="Разделы кабинета" className="flex flex-wrap gap-1">
-              {links.map((link) => (
-                // Начертание у всех пунктов одно: жирный активный шире обычного и
-                // при переходе толкал бы соседей.
-                <Link
-                  key={link.seg}
-                  href={link.href}
-                  aria-current={link.active ? 'page' : undefined}
-                  className={cn(
-                    'relative flex h-11 items-center rounded-xl px-3.5 text-sm font-medium transition-colors duration-(--duration-tab) ease-(--ease-tab)',
-                    link.active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {link.active && (
-                    <motion.span
-                      layoutId="cabinet-section-desktop"
-                      transition={PILL_TRANSITION}
-                      className="bg-primary/10 absolute inset-0 rounded-xl"
-                    />
-                  )}
-                  <span className="relative flex items-center gap-2">
-                    <SectionIcon icon={link.icon} active={link.active} size={18} />
-                    {link.label}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-          </MotionConfig>
+          <nav aria-label="Разделы кабинета" className="flex gap-1">
+            {sections.map((link) => (
+              <NavLink key={link.seg} link={link} />
+            ))}
+          </nav>
 
-          <div className="ml-auto flex items-center gap-2">
-            {children.length === 2 && <ChildTabs token={token} compact />}
-            {many && <ChildMenu token={token} />}
-            <SwitchThemeButton />
-          </div>
-        </div>
-      </div>
-
-      {/* На десктопе у главной здесь ничего не видно — без отступа, иначе под
-          полосой разделов остаётся пустая полоса. */}
-      <div
-        className={cn(
-          'cabinet-centered mx-auto flex max-w-280 flex-col gap-3 px-4 pt-3 md:px-6',
-          isHome ? 'md:pt-0' : 'md:pt-8',
-        )}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-muted-foreground text-sm font-medium md:hidden">
-              {isPending ? <Skeleton className="h-4 w-32" /> : school}
-            </span>
-            {isHome ? (
-              <h1 className="sr-only">{title}</h1>
-            ) : !isPending && title ? (
-              // Ключ по тексту: заголовок проявляется вместе с содержимым раздела.
-              <h1
-                key={title}
-                className="animate-tab-enter truncate text-2xl font-semibold tracking-tight md:text-3xl"
-              >
-                {title}
-              </h1>
-            ) : (
-              <Skeleton className="h-8 w-48" />
-            )}
-          </div>
-          <div className="md:hidden">
-            <SwitchThemeButton />
-          </div>
-        </div>
-
-        {children.length === 2 && (
-          <div className="md:hidden">
-            <ChildTabs token={token} />
-          </div>
-        )}
-        {many && (
-          <div className="md:hidden">
+          <div className="ml-auto flex items-center gap-1">
             <ChildMenu token={token} />
+            <NavLink link={profile} />
+            <SwitchThemeButton variant="ghost" className={THEME_BUTTON_CLASS} />
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Отступы считаны от сетки страницы (16 px): аватар ребёнка и значок темы
+          встают по краям карточек, а их кнопки выходят за край на свои поля. */}
+      <div className="flex items-center justify-between gap-1 pt-2.5 pr-1 pl-2.5 md:pr-3 md:pl-4.5 lg:hidden">
+        {children.length > 0 ? (
+          <ChildMenu token={token} />
+        ) : (
+          <span className="min-w-0 flex-1 truncate px-1.5 text-base font-semibold">{school}</span>
+        )}
+        <SwitchThemeButton variant="ghost" className={THEME_BUTTON_CLASS} />
+      </div>
+
+      {isHome ? (
+        <h1 className="sr-only">{title}</h1>
+      ) : (
+        <div className="cabinet-centered mx-auto max-w-280 px-4 pt-2 md:px-6 lg:pt-8">
+          {!isPending && title ? (
+            <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
+          ) : (
+            <Skeleton className="h-8 w-48 rounded-xl" />
+          )}
+        </div>
+      )}
     </header>
   )
 }
 
 /**
- * Вкладки как на входе и над графиками (`components/chart-tabs.tsx`): фон
- * активной рисует `TabsIndicator`, поэтому у триггера `data-active:bg-transparent`,
- * а длительность задана явно, чтобы подпись перекрашивалась вместе с пилюлей.
+ * Кружок ребёнка в цвете его места в семье. Внутри — значок ребёнка, а не
+ * инициалы (решение 30.10.2026; рюкзак и другие варианты отклонены).
  */
-const TRIGGER_CLASS =
-  'text-muted-foreground font-semibold duration-(--duration-tab) ease-(--ease-tab) data-active:bg-transparent dark:data-active:border-transparent dark:data-active:bg-transparent'
-
-/** Двое детей — вкладки с именами. */
-function ChildTabs({ token, compact }: { token: string; compact?: boolean }) {
-  const { children, studentId, setChild } = useSelectedChild(token)
-
+function ChildAvatar({ index }: { index: number }) {
   return (
-    <Tabs value={studentId} onValueChange={(value) => setChild(value as number)}>
-      {/* Высота — вариантом группы, иначе базовый `group-data-horizontal/tabs:h-8`
-          окажется специфичнее. На телефоне 44px: во вкладку попадают пальцем.
-          Подложка темнее, чем `bg-muted/70` у остальных вкладок: фон кабинета сам
-          `bg-muted`, и на нём штатная подложка не видна. */}
-      <TabsList
-        aria-label="Ребёнок"
-        className={cn(
-          'bg-foreground/5 grid w-full grid-cols-2',
-          compact ? 'group-data-horizontal/tabs:h-9' : 'group-data-horizontal/tabs:h-11',
-        )}
-      >
-        {/* В тёмной теме карточка почти сливается с подложкой (0.205 против
-            0.19), поэтому пилюля там светлее: выбранного ребёнка видно и на телефоне. */}
-        <TabsIndicator className="bg-card dark:bg-foreground/15" />
-        {children.map((child) => (
-          <TabsTrigger
-            key={child.id}
-            value={child.id}
-            className={cn(TRIGGER_CLASS, compact ? 'px-2.5 text-xs' : 'text-sm')}
-          >
-            {child.firstName}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    <span
+      aria-hidden
+      className={cn(
+        'flex size-9 shrink-0 items-center justify-center rounded-full',
+        TINTS[index % TINTS.length],
+      )}
+    >
+      <Baby className="size-4.5" />
+    </span>
   )
 }
 
-/** Трое детей и больше — выпадающий список. */
+/**
+ * Выбор ребёнка. Детей больше одного — меню; один — та же плашка без стрелки и
+ * без меню: шапка всё равно называет, чей это кабинет. Плашка одна на телефон и
+ * десктоп (решение 30.10.2026): значок и имя, без второй строки — группы видны
+ * в пунктах меню.
+ */
 function ChildMenu({ token }: { token: string }) {
   const { children, studentId, setChild } = useSelectedChild(token)
-  const current = children.find((child) => child.id === studentId)
+  // Выбранного ребёнка включаем, когда меню уже погасло. При плавной смене раздела
+  // (View Transitions, сейчас выключена — см. section-transition.tsx) раздел
+  // рисуется слоем над всей страницей, и карточки накрывали бы ещё не закрытое меню.
+  const picked = useRef<number | null>(null)
+  const index = children.findIndex((child) => child.id === studentId)
+  const current = children[index]
   if (!current) return null
 
+  const several = children.length > 1
+  const name = getFullName(current.firstName, current.lastName)
+  const box = cn('flex min-w-0 items-center pr-3 text-left', CHILD_ROW)
+
+  const label = (
+    <>
+      <ChildAvatar index={index} />
+      <span className={cn(CHILD_TEXT, 'max-w-64')}>
+        <span className={cn(CHILD_NAME, 'flex items-center gap-1')}>
+          <span className="truncate">{name}</span>
+          {several && <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />}
+        </span>
+      </span>
+    </>
+  )
+
+  if (!several) {
+    return (
+      <span className={box}>
+        <span className="sr-only">Ребёнок: </span>
+        {label}
+      </span>
+    )
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChangeComplete={(open) => {
+        if (open || picked.current === null) return
+        setChild(picked.current)
+        picked.current = null
+      }}
+    >
+      {/* Имя выбранного — в подписи: иначе читалка экрана называет действие, но не ребёнка. */}
       <DropdownMenuTrigger
-        aria-label="Выбрать ребёнка"
-        className="hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] bg-card flex h-11 max-w-full cursor-pointer items-center gap-2.5 rounded-xl border px-3 transition-colors"
+        aria-label={`Ребёнок: ${name}`}
+        className={cn(
+          box,
+          'hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.06] cursor-pointer transition-colors',
+        )}
       >
-        <span className="truncate text-sm font-medium">{current.firstName}</span>
-        <ChevronDown className="text-muted-foreground size-5 shrink-0" />
+        {label}
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+      <DropdownMenuContent
+        align="end"
+        className="w-max max-w-[calc(100vw-1.5rem)] min-w-(--anchor-width) rounded-xl p-1"
+      >
         <DropdownMenuRadioGroup
           value={studentId}
-          onValueChange={(value) => setChild(value as number)}
+          onValueChange={(value) => {
+            picked.current = value as number
+          }}
         >
-          {children.map((child) => (
+          {children.map((child, i) => (
+            // Пункт-переключатель Base UI сам меню не закрывает.
             <DropdownMenuRadioItem
               key={child.id}
               value={child.id}
-              className="min-h-14 rounded-xl px-3 py-2 pr-9"
+              closeOnClick
+              className={cn(CHILD_ROW, 'rounded-lg')}
             >
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-base font-semibold">
-                  {getFullName(child.firstName, child.lastName)}
-                </span>
-                {child.groups.length > 0 && (
-                  <span className="text-muted-foreground truncate text-sm">
-                    {child.groups.join(' · ')}
-                  </span>
-                )}
+              <ChildAvatar index={i} />
+              <span className={CHILD_TEXT}>
+                <span className={CHILD_NAME}>{getFullName(child.firstName, child.lastName)}</span>
               </span>
             </DropdownMenuRadioItem>
           ))}
@@ -275,55 +285,63 @@ function ChildMenu({ token }: { token: string }) {
   )
 }
 
+/**
+ * Раздел или профиль на десктопе — одинаковые кнопки в рост полосы. Подсветка
+ * выбранного стоит на месте и меняется сразу, без перехода (решение 30.10.2026).
+ * Начертание у всех пунктов одно: жирный выбранный шире обычного и толкал бы соседей.
+ */
+function NavLink({ link }: { link: SectionLink }) {
+  return (
+    <Link
+      href={link.href}
+      aria-current={link.active ? 'page' : undefined}
+      className={cn(
+        'flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-medium',
+        link.active ? cn('bg-primary/10', PRIMARY_TEXT) : 'hover:bg-foreground/[0.06]',
+      )}
+    >
+      <SectionIcon icon={link.icon} active={link.active} size={18} />
+      {link.label}
+    </Link>
+  )
+}
+
 /** Нижний таб-бар: основная навигация на телефоне (десктоп — ряд ссылок в шапке). */
 export function CabinetTabBar({ token }: { token: string }) {
-  const links = useSectionLinks(token)
+  const { sections, profile } = useSectionLinks(token)
 
   return (
     <nav
       aria-label="Разделы кабинета"
-      className="cabinet-tabbar bg-card fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="cabinet-tabbar bg-card fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <MotionConfig reducedMotion="user">
-        <div className="flex px-2 pt-1.5 pb-2.5">
-          {links.map((link) => (
-            <Link
-              key={link.seg}
-              href={link.href}
-              aria-current={link.active ? 'page' : undefined}
-              className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs"
+      {/* Подсветка вкладки стоит на месте и меняется сразу, без перехода (решение 30.10.2026). */}
+      <div className="flex px-2 pt-1.5 pb-2.5">
+        {[...sections, profile].map((link) => (
+          <Link
+            key={link.seg}
+            href={link.href}
+            aria-current={link.active ? 'page' : undefined}
+            className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs"
+          >
+            <span
+              className={cn(
+                'flex h-7.5 w-14 items-center justify-center rounded-full',
+                link.active ? cn('bg-primary/15', PRIMARY_TEXT) : 'text-muted-foreground',
+              )}
             >
-              <span className="relative flex h-7.5 w-14 items-center justify-center">
-                {link.active && (
-                  <motion.span
-                    layoutId="cabinet-section-mobile"
-                    transition={PILL_TRANSITION}
-                    className="bg-primary/15 absolute inset-0 rounded-full"
-                  />
-                )}
-                <span
-                  className={cn(
-                    'relative transition-colors duration-(--duration-tab) ease-(--ease-tab)',
-                    link.active ? 'text-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  <SectionIcon icon={link.icon} active={link.active} size={20} />
-                </span>
-              </span>
-              <span
-                className={cn(
-                  'transition-colors duration-(--duration-tab) ease-(--ease-tab)',
-                  link.active
-                    ? 'text-foreground font-semibold'
-                    : 'text-muted-foreground font-medium',
-                )}
-              >
-                {link.label}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </MotionConfig>
+              <SectionIcon icon={link.icon} active={link.active} size={20} />
+            </span>
+            <span
+              className={
+                link.active ? 'text-foreground font-semibold' : 'text-muted-foreground font-medium'
+              }
+            >
+              {link.label}
+            </span>
+          </Link>
+        ))}
+      </div>
     </nav>
   )
 }

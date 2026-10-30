@@ -64,7 +64,7 @@ export default async function CabinetLayout({ children, params }: LayoutProps) {
       <div data-cabinet className="bg-muted dark:bg-background min-h-svh">
         <CabinetHeader token={token.data} />
         {/* pb-28 — под фиксированный таб-бар, его на десктопе нет. */}
-        <main className="cabinet-centered mx-auto max-w-280 px-4 pt-4 pb-28 md:px-6 md:pt-6 md:pb-10">
+        <main className="cabinet-centered mx-auto max-w-280 px-4 pt-4 pb-28 md:px-6 lg:pt-6 lg:pb-10">
           <SectionTransition token={token.data}>{children}</SectionTransition>
         </main>
         <CabinetTabBar token={token.data} />
