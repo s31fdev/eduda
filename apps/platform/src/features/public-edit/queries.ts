@@ -93,6 +93,7 @@ export const useSelectedChild = (token: string) => {
 
   // Смена ребёнка — переход React: только под ним `SectionTransition` плавно
   // меняет содержимое, обычное обновление состояния сменило бы его рывком.
+  // Сама плавная смена сейчас выключена (см. section-transition.tsx).
   const selectChild = (id: number) => startTransition(() => void setChild(id))
 
   return { studentId, children, childQuery, setChild: selectChild, isPending, isError }
