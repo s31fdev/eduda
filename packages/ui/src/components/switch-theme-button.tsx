@@ -4,9 +4,12 @@ import { Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
 import { Button } from '@repo/ui/components/button'
-import { useSyncExternalStore } from 'react'
+import { type ComponentProps, useSyncExternalStore } from 'react'
 
-export function SwitchThemeButton() {
+export function SwitchThemeButton({
+  variant = 'outline',
+  className,
+}: Pick<ComponentProps<typeof Button>, 'variant' | 'className'>) {
   const { resolvedTheme, setTheme } = useTheme()
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -16,8 +19,9 @@ export function SwitchThemeButton() {
 
   return (
     <Button
-      variant="outline"
+      variant={variant}
       size="icon-lg"
+      className={className}
       aria-label="Сменить тему"
       onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
     >
