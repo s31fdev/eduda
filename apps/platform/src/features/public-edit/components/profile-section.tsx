@@ -2,7 +2,7 @@
 
 import NotificationsSection from '@/src/features/notifications/components/notifications-section'
 import { formatDate } from '@/src/lib/timezone'
-import { getFullName } from '@/src/lib/utils'
+import { cn, getFullName } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import {
   Drawer,
@@ -29,7 +29,7 @@ import {
 } from '../queries'
 import type { PublicParent } from '../types'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { Initials, ListCard, PrivacyNote, SectionTitle } from './cabinet-ui'
+import { Initials, ListCard, PRIMARY_TEXT, PrivacyNote, SectionTitle } from './cabinet-ui'
 
 export default function ProfileSection({ token }: { token: string }) {
   const { studentId, children, isPending: childPending } = useSelectedChild(token)
@@ -152,7 +152,10 @@ function ChildProfile({ token, studentId }: { token: string; studentId: number }
             <button
               type="button"
               onClick={() => openParent({ mode: 'new' })}
-              className="text-primary hover:bg-muted/60 flex min-h-14 w-full cursor-pointer items-center gap-3.5 px-4 py-2 text-left text-base font-semibold transition-colors"
+              className={cn(
+                PRIMARY_TEXT,
+                'hover:bg-muted/60 flex min-h-14 w-full cursor-pointer items-center gap-3.5 px-4 py-2 text-left text-base font-semibold transition-colors',
+              )}
             >
               <span className="border-primary/40 flex size-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed">
                 <Plus className="size-4.5" />

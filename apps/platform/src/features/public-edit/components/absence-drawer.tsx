@@ -44,7 +44,7 @@ import {
   useMakeupOptionsQuery,
   useSetPublicAbsenceMutation,
 } from '../queries'
-import { DateBadge } from './cabinet-ui'
+import { DateBadge, PRIMARY_TEXT } from './cabinet-ui'
 
 /**
  * Состояние шторки живёт у страницы: урок запоминаем и после закрытия, иначе
@@ -341,7 +341,7 @@ function DoneStep({
                     Занятие другой группы, где есть места
                   </span>
                 </span>
-                <ChevronRight className="text-primary size-5 shrink-0" />
+                <ChevronRight className={cn(PRIMARY_TEXT, 'size-5 shrink-0')} />
               </button>
             )
           )}

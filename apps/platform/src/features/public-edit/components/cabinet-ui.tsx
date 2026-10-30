@@ -22,6 +22,14 @@ import type { CabinetLesson, LessonState } from '../lib'
  * Отдельным файлом, потому что их делят все четыре раздела.
  */
 
+/**
+ * Фиолетовый текст и значки на поверхностях кабинета: ссылки, действия, выбранный
+ * пункт меню. В тёмной теме фирменный violet-600 на карточке даёт около 3:1 — ниже
+ * 4,5:1 для текста, — поэтому там ступень светлее, violet-300, около 10:1 (решение
+ * 30.10.2026). Не для текста на фиолетовой или белой заливке: там свои пары.
+ */
+export const PRIMARY_TEXT = 'text-primary dark:text-violet-300'
+
 /** Белая карточка с разделителями между строками. */
 export function ListCard({ className, ...props }: React.ComponentProps<'ul'>) {
   return (
@@ -191,7 +199,10 @@ export function SectionHeader({
       <Link
         href={href}
         aria-label={label}
-        className="text-primary -my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold"
+        className={cn(
+          PRIMARY_TEXT,
+          '-my-2.5 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold',
+        )}
       >
         Подробнее
         <ChevronRight className="size-4" />

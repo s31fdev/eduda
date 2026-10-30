@@ -1,6 +1,7 @@
 'use client'
 
 import { formatDate } from '@/src/lib/timezone'
+import { cn } from '@/src/lib/utils'
 import { Button } from '@repo/ui/components/button'
 import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
@@ -29,6 +30,7 @@ import {
   CollapsiblePanel,
   LessonLine,
   ListCard,
+  PRIMARY_TEXT,
   SectionTitle,
   StateChip,
 } from './cabinet-ui'
@@ -127,7 +129,12 @@ export default function AttendanceSection({ token }: { token: string }) {
           .filter((group) => group.active)
           .map((group) => (
             <div key={group.id} className="flex items-center gap-3 border-t pt-3">
-              <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl">
+              <span
+                className={cn(
+                  PRIMARY_TEXT,
+                  'bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-xl',
+                )}
+              >
                 <BookOpen className="size-5" />
               </span>
               <span className="flex min-w-0 flex-col gap-0.5">
@@ -197,7 +204,7 @@ export default function AttendanceSection({ token }: { token: string }) {
           {!showAll && ahead.length > AHEAD_VISIBLE && (
             <Button
               variant="ghost"
-              className="text-primary h-11 self-start rounded-xl text-sm font-semibold"
+              className={cn(PRIMARY_TEXT, 'h-11 self-start rounded-xl text-sm font-semibold')}
               onClick={() => setShowAll(true)}
             >
               Показать ещё {ahead.length - AHEAD_VISIBLE}

@@ -3,7 +3,7 @@
 import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { ChevronDown, Info } from 'lucide-react'
-import { formatCurrency } from '@/src/lib/utils'
+import { cn, formatCurrency } from '@/src/lib/utils'
 import { cabinetLessons, dayLabel, lessonsWord, splitByNow, weekday } from '../lib'
 import {
   usePublicStudentFinancesQuery,
@@ -12,7 +12,7 @@ import {
 } from '../queries'
 import { BalanceCard, type CabinetWallet, walletLabel } from './balance-card'
 import { CabinetEmpty, NoChildren } from './cabinet-empty'
-import { CollapsiblePanel, LessonLine, ListCard, SectionTitle } from './cabinet-ui'
+import { CollapsiblePanel, LessonLine, ListCard, PRIMARY_TEXT, SectionTitle } from './cabinet-ui'
 
 export default function FinancesSection({ token }: { token: string }) {
   const { studentId, isPending: childPending } = useSelectedChild(token)
@@ -198,7 +198,7 @@ function PackageRow({
                 style={{ width: `${Math.round((pkg.remaining / pkg.lessonCount) * 100)}%` }}
               />
             </span>
-            <span className="text-primary shrink-0 text-sm font-semibold">
+            <span className={cn(PRIMARY_TEXT, 'shrink-0 text-sm font-semibold')}>
               осталось {pkg.remaining} из {pkg.lessonCount}
             </span>
           </span>
