@@ -13,6 +13,12 @@ import {
 } from '@repo/ui/components/alert-dialog'
 import { Badge } from '@repo/ui/components/badge'
 import { Button } from '@repo/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@repo/ui/components/dropdown-menu'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@repo/ui/components/field'
 import { Input } from '@repo/ui/components/input'
 import { ScrollArea } from '@repo/ui/components/scroll-area'
@@ -52,11 +58,12 @@ import {
   PackageOpen,
   Pen,
   Plus,
+  Settings,
   TrendingDown,
   TriangleAlert,
   Wallet,
 } from 'lucide-react'
-import { useState, useTransition } from 'react'
+import { useState, useTransition, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 // Подарок уроков (`GiftLessonsDrawer`) скрыт до решения владельца (24.09.2026):
@@ -65,6 +72,53 @@ type DrawerType = 'create' | 'transfer' | 'link' | 'edit' | 'correct' | null
 
 interface WalletsSectionProps {
   student: StudentDetail
+}
+
+/**
+ * Все действия кошелька — в одном меню под шестерёнкой. Раньше они стояли рядом
+ * иконками, и у полного кошелька их набиралось до пяти подряд: в шапке карточки
+ * они отжимали название, а по иконке размером 12px без подписи не угадать, что
+ * за ней — «Привязать группу» или «Исправить пакет». Подписи и порядок те же,
+ * что были в подсказках иконок; архив последним и красным — он же и единственный
+ * необратимый.
+ */
+function WalletActionsMenu({
+  label,
+  actions,
+  disabled,
+}: {
+  label: string
+  actions: Array<{
+    label: string
+    icon: ReactNode
+    onSelect: () => void
+    variant?: 'default' | 'destructive'
+  }>
+  disabled?: boolean
+}) {
+  return (
+    <DropdownMenu>
+      {/* Меню внутри блока, который ещё и раскрывается шевроном: клик по триггеру
+          не должен заодно переключать раскрытие. */}
+      <DropdownMenuTrigger
+        render={<Button size="icon" variant="ghost" className="size-6" />}
+        disabled={disabled}
+        title={label}
+        aria-label={label}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Settings className="size-3" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-max" onClick={(e) => e.stopPropagation()}>
+        {actions.map((a) => (
+          <DropdownMenuItem key={a.label} variant={a.variant} onClick={a.onSelect}>
+            {a.icon}
+            {a.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 export default function WalletsSection({ student }: WalletsSectionProps) {
@@ -287,77 +341,64 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                   <>
                     <Badge variant="outline">Архив</Badge>
                     {canMoveMoney && w.lessonsBalance > 0 && activeWallets.length > 0 && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-6"
-                        onClick={() => openTransferDrawer(w.id)}
+                      <WalletActionsMenu
+                        label="Ещё"
                         disabled={isPending}
-                        title="Перенести на активный кошелёк"
-                      >
-                        <ArrowLeftRight className="size-3" />
-                      </Button>
+                        actions={[
+                          {
+                            label: 'Перенести на активный кошелёк',
+                            icon: <ArrowLeftRight />,
+                            onSelect: () => openTransferDrawer(w.id),
+                          },
+                        ]}
+                      />
                     )}
                   </>
                 ) : (
-                  <>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-6"
-                      onClick={() => openEditDrawer(w)}
-                      disabled={isPending}
-                      title="Переименовать кошелёк"
-                    >
-                      <Pen className="size-3" />
-                    </Button>
-                    {canMoveMoney && unlinkedGroups.length > 0 && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-6"
-                        onClick={() => openLinkDrawerForWallet(w.id)}
-                        disabled={isPending}
-                        title="Привязать группу"
-                      >
-                        <Link2 className="size-3" />
-                      </Button>
-                    )}
-                    {canMoveMoney && activeWallets.length >= 2 && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-6"
-                        onClick={() => openTransferDrawer(w.id)}
-                        disabled={isPending}
-                        title="Перенести на другой кошелёк"
-                      >
-                        <ArrowLeftRight className="size-3" />
-                      </Button>
-                    )}
-                    {canEditPackages && w.packages.length > 0 && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-6"
-                        onClick={() => openCorrectDrawer(w.id)}
-                        disabled={isPending}
-                        title="Исправить пакет"
-                      >
-                        <PackageOpen className="size-3" />
-                      </Button>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-6"
-                      onClick={() => confirmArchive(w.id)}
-                      disabled={isPending}
-                      title="Архивировать кошелёк"
-                    >
-                      <Archive className="size-3" />
-                    </Button>
-                  </>
+                  <WalletActionsMenu
+                    label="Действия с кошельком"
+                    disabled={isPending}
+                    actions={[
+                      {
+                        label: 'Переименовать',
+                        icon: <Pen />,
+                        onSelect: () => openEditDrawer(w),
+                      },
+                      ...(canMoveMoney && unlinkedGroups.length > 0
+                        ? [
+                            {
+                              label: 'Привязать группу',
+                              icon: <Link2 />,
+                              onSelect: () => openLinkDrawerForWallet(w.id),
+                            },
+                          ]
+                        : []),
+                      ...(canMoveMoney && activeWallets.length >= 2
+                        ? [
+                            {
+                              label: 'Перенести на другой кошелёк',
+                              icon: <ArrowLeftRight />,
+                              onSelect: () => openTransferDrawer(w.id),
+                            },
+                          ]
+                        : []),
+                      ...(canEditPackages && w.packages.length > 0
+                        ? [
+                            {
+                              label: 'Исправить пакет',
+                              icon: <PackageOpen />,
+                              onSelect: () => openCorrectDrawer(w.id),
+                            },
+                          ]
+                        : []),
+                      {
+                        label: 'Архивировать',
+                        icon: <Archive />,
+                        onSelect: () => confirmArchive(w.id),
+                        variant: 'destructive' as const,
+                      },
+                    ]}
+                  />
                 )
               }
             />
