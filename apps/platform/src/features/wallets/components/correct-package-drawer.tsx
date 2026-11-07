@@ -79,7 +79,7 @@ export function CorrectPackageDrawer({
   // Почему сумма не правится — называем заранее, а не отказом после нажатия.
   const priceLock = !facts
     ? null
-    : !facts.hasPayment
+    : facts.isGift
       ? 'У подарка нет суммы.'
       : facts.fromCrm
         ? 'Сумма пришла из счёта amoCRM.'

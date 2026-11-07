@@ -699,6 +699,72 @@ async function main() {
       })
       assert.deepEqual(giftHistory, { comment: 'компенсация', delta: 2 }, 'подарок виден в истории')
 
+      // Подарку сумму по-прежнему не назначить: выручка без денег не появляется.
+      await assert.rejects(
+        correct(gifted.packageId, 2, 1_000),
+        /У подарка нет суммы/,
+        'подарок остаётся нулевым',
+      )
+
+      // Пакет перехода после слияния с денежной записью: без счёта, но с суммой.
+      // Правится как обычный — и количество, и сумма.
+      const mergedWallet = await newWallet()
+      const merged = await tx.package.create({
+        data: {
+          organizationId,
+          studentId: student.id,
+          walletId: mergedWallet,
+          date: '2027-10-01',
+          price: 5_000,
+          lessonCount: 5,
+          remaining: 5,
+          unitPrice: 1_000,
+        },
+        select: { id: true },
+      })
+      await activatePackageTx(tx, { packageId: merged.id, organizationId, actorUserId: null })
+      await correct(merged.id, 8, 8_000)
+      assert.deepEqual(
+        await packetOf(merged.id),
+        { lessonCount: 8, remaining: 8, price: 8_000, unitPrice: 1_000 },
+        'слившийся пакет правится как обычный',
+      )
+      assert.equal(await balance(mergedWallet), 8, 'баланс вырос на прибавку: 5 + 3')
+      assert.equal(
+        (
+          await tx.wallet.findUniqueOrThrow({
+            where: { id: mergedWallet },
+            select: { totalPayments: true },
+          })
+        ).totalPayments,
+        8_000,
+        'счётчик денег сдвинулся на разницу сумм, счёта при этом нет и не создаётся',
+      )
+      await assertBalanced(mergedWallet, 'правка слившегося пакета')
+
+      // Непокрытый legacy (денег в паре не нашлось: цена урока есть, суммы нет)
+      // по-прежнему не правится — его деньги разбираются вручную.
+      const uncoveredWallet = await newWallet()
+      const uncovered = await tx.package.create({
+        data: {
+          organizationId,
+          studentId: student.id,
+          walletId: uncoveredWallet,
+          date: '2027-10-01',
+          price: 0,
+          lessonCount: 4,
+          remaining: 4,
+          unitPrice: 800,
+        },
+        select: { id: true },
+      })
+      await activatePackageTx(tx, { packageId: uncovered.id, organizationId, actorUserId: null })
+      await assert.rejects(
+        correct(uncovered.id, 6, 0),
+        /перенесён из старой системы/,
+        'непокрытый пакет перехода под запретом',
+      )
+
       // Взнос заведён как «1 занятие за 11 834 ₽», одно списалось, следующее ждёт
       // оплаты. Исправляем на девять: все девять встают по 1 314 ₽, и прошедшее
       // тоже — оно было оценено неверно вместе с пакетом.

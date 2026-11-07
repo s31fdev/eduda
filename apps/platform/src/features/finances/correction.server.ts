@@ -63,11 +63,23 @@ export async function readCorrectionFactsTx(
   })
   if (!packet) return null
 
-  const charged = await tx.attendance.aggregate({
-    where: { packageId: packet.id, organizationId: args.organizationId },
-    _count: { _all: true },
-    _sum: { price: true },
-  })
+  const [charged, gift] = await Promise.all([
+    tx.attendance.aggregate({
+      where: { packageId: packet.id, organizationId: args.organizationId },
+      _count: { _all: true },
+      _sum: { price: true },
+    }),
+    // Подарок — по событию выдачи, а не по нулевой цене: нулевая цена бывает и
+    // у пакетов перехода, которые подарком не являются.
+    tx.studentLessonsBalanceHistory.findFirst({
+      where: {
+        organizationId: args.organizationId,
+        reason: StudentLessonsBalanceChangeReason.LESSONS_GIFTED,
+        meta: { path: ['packageId'], equals: packet.id },
+      },
+      select: { id: true },
+    }),
+  ])
 
   const facts: CorrectionFacts = {
     status: packet.status,
@@ -76,6 +88,7 @@ export async function readCorrectionFactsTx(
     price: packet.price,
     unitPrice: packet.unitPrice,
     hasPayment: packet.paymentId !== null,
+    isGift: gift !== null,
     fromCrm: packet.payment?.externalId != null,
     chargedCount: charged._count._all,
     chargedMoney: charged._sum.price ?? 0,
