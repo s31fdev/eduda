@@ -7,6 +7,8 @@ import { Checkbox } from '@repo/ui/components/checkbox'
 import { ScrollArea } from '@repo/ui/components/scroll-area'
 import { Switch } from '@repo/ui/components/switch'
 import { Field, FieldDescription, FieldLabel } from '@repo/ui/components/field'
+import { Input } from '@repo/ui/components/input'
+import { RadioGroup, RadioGroupItem } from '@repo/ui/components/radio-group'
 import {
   DrawerClose,
   DrawerDescription,
@@ -42,9 +44,9 @@ const plural = (n: number, one: string, few: string, many: string) => {
 
 const lessonsWord = (n: number) => plural(n, 'занятие', 'занятия', 'занятий')
 
-// Перепривязка групп скрыта до решения (24.09.2026): ядро, экшен и сверка готовы
-// (`relinkGroupTx`, `check-group-relink.ts`), секции «Группы» в окне нет.
-const RELINK_ENABLED: boolean = false
+// Перепривязка групп открыта (решение 07.11.2026): ядро, экшен и сверка готовы
+// (`relinkGroupTx`, `check-group-relink.ts`), секция «Группы» в окне работает
+// в двух режимах — см. `RelinkMode` в `transfer.server.ts`.
 
 interface TransferPackagesDrawerProps {
   student: StudentDetail
@@ -59,10 +61,11 @@ interface TransferPackagesDrawerProps {
  * здесь выбирают пакеты галочками, а не вводят количество. В списке только пакеты с
  * непотраченным остатком и ждущие оплаты: выработанный переносить незачем.
  *
- * Группа переезжает со своими деньгами: оплаченные занятия возвращаются в свои
- * пакеты и списываются заново из пакетов получателя (`relinkGroupTx`). Сначала
- * едут пакеты, потом группы — занятия, оплаченные переезжающим пакетом, остаются
- * за ним. Пока секция групп скрыта — см. `RELINK_ENABLED`.
+ * Группа переезжает на выбранный кошелёк в одном из двух режимов: «Без пересчёта
+ * оплаченных» меняет только связь — неоплаченные занятия группы начинает закрывать
+ * новый кошелёк; «Пересчитать историю» возвращает оплаченные занятия в свои пакеты
+ * и списывает их заново из пакетов получателя (`relinkGroupTx`). Сначала едут
+ * пакеты, потом группы — занятия, оплаченные переезжающим пакетом, остаются за ним.
  *
  * Сводка — это сам перенос, прогнанный вхолостую на сервере: что покажет окно, то
  * сохранение и запишет. Два предупреждения смотрят вперёд, куда прогон не видит:
@@ -78,6 +81,10 @@ export function TransferPackagesDrawer({
   const [groupIds, setGroupIds] = useState<number[]>([])
   const [toWalletId, setToWalletId] = useState<string>('')
   const [movePackages, setMovePackages] = useState(true)
+  // Режим перепривязки групп: оплаченные остаются на месте (по умолчанию) или
+  // история пересчитывается из пакетов получателя.
+  const [mode, setMode] = useState<'KEEP_PAID' | 'REPRICE_HISTORY'>('KEEP_PAID')
+  const [comment, setComment] = useState('')
 
   const { data: packages, isPending } = useTransferablePackagesQuery(fromWalletId)
   const transferMutation = useTransferPackagesMutation(student.id)
@@ -85,7 +92,7 @@ export function TransferPackagesDrawer({
   const targetId = toWalletId ? Number(toWalletId) : null
   const values =
     targetId !== null && selected.length + groupIds.length > 0
-      ? { fromWalletId, toWalletId: targetId, packageIds: selected, groupIds }
+      ? { fromWalletId, toWalletId: targetId, packageIds: selected, groupIds, mode, comment }
       : null
   const { data: lastPreview, isFetching, error } = useTransferPreviewQuery(values)
   // `keepPreviousData` отдаёт прошлый ответ и выключенному запросу, поэтому сводка
@@ -114,6 +121,9 @@ export function TransferPackagesDrawer({
     transferMutation.mutate(values, { onSuccess: () => onDone() })
   }
 
+  // Причина обязательна, только когда едут группы — её прочитают в истории ученика.
+  const commentValid = groupIds.length === 0 || comment.trim().length >= 3
+
   return (
     <>
       <DrawerHeader className="pb-4">
@@ -137,8 +147,7 @@ export function TransferPackagesDrawer({
           </Field>
 
           <Field>
-            {/* Выключенный — «перевесить только группы, пакеты не трогать». Пока
-                группы скрыты (`RELINK_ENABLED`), выключать его не в пользу чего. */}
+            {/* Выключенный — «перевесить только группы, пакеты не трогать». */}
             <div className="flex items-center justify-between gap-2">
               <FieldLabel htmlFor="transfer-packages-toggle">Пакеты</FieldLabel>
               <Switch
@@ -203,43 +212,76 @@ export function TransferPackagesDrawer({
             )}
           </Field>
 
-          {RELINK_ENABLED && (
-            <Field>
-              <FieldLabel>Группы</FieldLabel>
-              {groups.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  К кошельку не привязано ни одной группы
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {groups.map((sg) => (
-                    <label
-                      key={sg.groupId}
-                      className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
-                    >
-                      <Checkbox
-                        checked={groupIds.includes(sg.groupId)}
-                        onCheckedChange={(val) => toggleGroup(sg.groupId, Boolean(val))}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {getGroupName(sg.group)}
-                      </span>
-                      {/* Отчисленные и закончившие тоже переезжают: их прошлые занятия
+          <Field>
+            <FieldLabel>Группы</FieldLabel>
+            {groups.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                К кошельку не привязано ни одной группы
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {groups.map((sg) => (
+                  <label
+                    key={sg.groupId}
+                    className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                  >
+                    <Checkbox
+                      checked={groupIds.includes(sg.groupId)}
+                      onCheckedChange={(val) => toggleGroup(sg.groupId, Boolean(val))}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {getGroupName(sg.group)}
+                    </span>
+                    {/* Отчисленные и закончившие тоже переезжают: их прошлые занятия
                         оплачены с этого кошелька так же, как у занимающихся. */}
-                      {sg.status !== 'ACTIVE' && (
-                        <Badge variant="outline" className="shrink-0">
-                          {StudentStatusMap[sg.status]}
-                        </Badge>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              )}
-              <FieldDescription>
-                Оплаченные занятия группы спишутся заново — из пакетов получателя и по их цене.
-              </FieldDescription>
-            </Field>
-          )}
+                    {sg.status !== 'ACTIVE' && (
+                      <Badge variant="outline" className="shrink-0">
+                        {StudentStatusMap[sg.status]}
+                      </Badge>
+                    )}
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {groupIds.length > 0 && (
+              <div className="space-y-3">
+                <RadioGroup
+                  value={mode}
+                  onValueChange={(v) => setMode(v as 'KEEP_PAID' | 'REPRICE_HISTORY')}
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="KEEP_PAID" id="relink-mode-keep" />
+                    <FieldLabel htmlFor="relink-mode-keep" className="font-normal">
+                      Без пересчёта оплаченных
+                    </FieldLabel>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="REPRICE_HISTORY" id="relink-mode-reprice" />
+                    <FieldLabel htmlFor="relink-mode-reprice" className="font-normal">
+                      Пересчитать историю
+                    </FieldLabel>
+                  </div>
+                </RadioGroup>
+
+                <Field>
+                  <FieldLabel htmlFor="relink-comment">Причина перепривязки</FieldLabel>
+                  <Input
+                    id="relink-comment"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Например: оплаты курса теперь идут на общий кошелёк"
+                  />
+                </Field>
+
+                <FieldDescription>
+                  {mode === 'KEEP_PAID'
+                    ? 'Оплаченные занятия останутся за прежними пакетами, неоплаченные начнёт закрывать кошелёк-получатель. Старые неоплаченные занятия могут списаться.'
+                    : 'Оплаченные занятия вернутся в свои пакеты и спишутся заново — из пакетов получателя и по их цене, прошлая выручка изменится. Старые неоплаченные занятия могут списаться.'}
+                </FieldDescription>
+              </div>
+            )}
+          </Field>
 
           {error && (
             <Alert variant="destructive">
@@ -362,9 +404,8 @@ export function TransferPackagesDrawer({
                 <TriangleAlert />
                 <AlertTitle>Кошелёк останется без уроков</AlertTitle>
                 <AlertDescription>
-                  Занятия будут ждать оплаты: {preview.orphanedGroups.join(', ')}.
-                  {RELINK_ENABLED &&
-                    ' Отметьте их в «Группах», чтобы перевесить вместе с пакетами.'}
+                  Занятия будут ждать оплаты: {preview.orphanedGroups.join(', ')}. Отметьте их в
+                  «Группах», чтобы перевесить вместе с пакетами.
                 </AlertDescription>
               </Alert>
             )}
@@ -374,7 +415,7 @@ export function TransferPackagesDrawer({
 
       <DrawerFooter className="pt-4">
         <DrawerClose render={<Button variant="outline" />}>Отмена</DrawerClose>
-        <Button onClick={submit} disabled={!values || transferMutation.isPending}>
+        <Button onClick={submit} disabled={!values || !commentValid || transferMutation.isPending}>
           {transferMutation.isPending && <Loader className="animate-spin" />}
           Перенести
         </Button>

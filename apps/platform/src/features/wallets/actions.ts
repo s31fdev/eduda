@@ -184,12 +184,13 @@ export const renameWallet = authAction
 // ─── LINK GROUP ──────────────────────────────────────────────────────────────
 
 /**
- * Группа без кошелька получает кошелёк — частный случай перепривязки: списанных
- * уроков у неё нет, остаётся гашение занятий, которые ждали оплаты.
+ * Группа без кошелька получает кошелёк — частный случай перепривязки в режиме
+ * «без пересчёта оплаченных»: списанных у группы уроков нет (их бы оплатил прежний
+ * кошелёк), остаётся гашение занятий, которые ждали оплаты.
  *
  * Группу, у которой кошелёк уже есть, перевешивает окно «Перенос»: захват по
- * прежнему кошельку (`null`) не даст молча переписать чужой, как это делал экшен
- * до перепривязки. Право то же, что у переноса: гашение двигает деньги.
+ * прежнему кошельку (`fromWalletId`) не даст молча переписать чужой, как это делал
+ * экшен до перепривязки. Право то же, что у переноса: гашение двигает деньги.
  */
 export const linkGroupToWallet = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'linkGroupToWallet' })
@@ -200,8 +201,9 @@ export const linkGroupToWallet = permissionAction(MOVE_MONEY_PERMISSION)
         await relinkGroupTx(tx, {
           studentId: parsedInput.studentId,
           groupId: parsedInput.groupId,
-          fromWalletId: null,
+          fromWalletId: parsedInput.fromWalletId,
           toWalletId: parsedInput.walletId,
+          mode: 'KEEP_PAID',
           organizationId: ctx.session.organizationId!,
           actorUserId: Number(ctx.session.user.id),
         }),

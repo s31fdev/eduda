@@ -31,6 +31,7 @@ export const walletKeys = {
   packages: (walletId: number) => ['wallets', 'packages', walletId] as const,
   // Порядок галочек кеш не различает: id сортируются, иначе «выбрал A, потом B» и
   // «выбрал B, потом A» — две записи с одинаковым ответом и лишний запрос на второй.
+  // Режим перепривязки меняет результат, причина — нет: её в ключ не включаем.
   transferPreview: (v: TransferPackagesSchemaType) =>
     [
       'wallets',
@@ -39,6 +40,7 @@ export const walletKeys = {
       v.toWalletId,
       [...v.packageIds].sort((a, b) => a - b),
       [...v.groupIds].sort((a, b) => a - b),
+      v.mode,
     ] as const,
 }
 
@@ -164,7 +166,7 @@ export const useTransferablePackagesQuery = (walletId: number | null) => {
 export const useTransferPreviewQuery = (values: TransferPackagesSchemaType | null) => {
   return useQuery({
     queryKey: walletKeys.transferPreview(
-      values ?? { fromWalletId: 0, toWalletId: 0, packageIds: [], groupIds: [] },
+      values ?? { fromWalletId: 0, toWalletId: 0, packageIds: [], groupIds: [], mode: 'KEEP_PAID' },
     ),
     queryFn: async () => {
       const { data, serverError, validationErrors } = await getTransferPreview(values!)

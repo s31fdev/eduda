@@ -84,6 +84,7 @@ const reasonLabel: Record<StudentLessonsBalanceChangeReason, string> = {
   LESSON_CANCELLED: 'Отмена урока',
   PACKAGE_CORRECTED: 'Исправление пакета',
   LESSONS_GIFTED: 'Подарок уроков',
+  GROUP_WALLET_CHANGED: 'Перепривязка группы',
 }
 
 const fieldLabel: Record<StudentFinancialField, string> = {
@@ -196,6 +197,22 @@ function getMetaDetails(
       return (
         <span className="text-muted-foreground text-sm">
           {link} · перепривязка группы{from ? ` из «${from}»` : ''} в «{attendanceMeta.relinkTo}»
+        </span>
+      )
+    }
+
+    case 'GROUP_WALLET_CHANGED': {
+      // Само событие связи: откуда и куда переехала группа и в каком режиме.
+      // Причина в колонке комментария, направление — здесь, как у переноса пакетов.
+      const relink = m as { relinkFrom?: string | null; relinkTo?: string; mode?: string }
+      const from = relink.relinkFrom
+      const to = relink.relinkTo
+      const mode =
+        relink.mode === 'REPRICE_HISTORY' ? 'пересчёт истории' : 'без пересчёта оплаченных'
+      if (!to) return null
+      return (
+        <span className="text-muted-foreground text-sm">
+          {from ? `из «${from}» в «${to}»` : `в «${to}»`} · {mode}
         </span>
       )
     }

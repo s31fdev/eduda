@@ -82,6 +82,10 @@ enum StudentLessonsBalanceChangeReason {
     PACKAGE_CORRECTED
     /// Уроки подарены отдельным пакетом без денег.
     LESSONS_GIFTED
+    /// Группа ученика перевешена на другой его кошелёк (привязка или перепривязка).
+    /// Строка пишется даже без движения денег: это единственный след смены связи
+    /// в истории ученика.
+    GROUP_WALLET_CHANGED
 }
 
 enum WalletEntryKind {

@@ -201,6 +201,13 @@ export default function GroupStudentActions({ sg }: UsersActionsProps) {
                 кошелёк будет отвязан.
               </AlertDescription>
             </Alert>
+            <Alert>
+              <TriangleAlert />
+              <AlertDescription>
+                Если цель — перевесить группу на другой кошелёк, запись удалять не нужно:
+                используйте «Перенести на другой кошелёк» в карточке ученика.
+              </AlertDescription>
+            </Alert>
           </AlertDialogHeader>
 
           <AlertDialogFooter>

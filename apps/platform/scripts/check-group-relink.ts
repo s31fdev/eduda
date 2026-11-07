@@ -197,12 +197,15 @@ async function main() {
           groupId: number,
           fromWalletId: number | null,
           toWalletId: number,
+          mode: 'KEEP_PAID' | 'REPRICE_HISTORY' = 'REPRICE_HISTORY',
         ) =>
           await relinkGroupTx(tx, {
             studentId,
             groupId,
             fromWalletId,
             toWalletId,
+            mode,
+            comment: 'Проверка перепривязки',
             organizationId,
             actorUserId: null,
           })
@@ -211,12 +214,16 @@ async function main() {
           to: number
           groupIds?: number[]
           packageIds?: number[]
+          mode?: 'KEEP_PAID' | 'REPRICE_HISTORY'
+          comment?: string
         }) =>
           await transferReportTx(tx, {
             fromWalletId: o.from,
             toWalletId: o.to,
             groupIds: o.groupIds ?? [],
             packageIds: o.packageIds ?? [],
+            mode: o.mode ?? 'REPRICE_HISTORY',
+            comment: o.comment ?? 'Проверка переноса',
             organizationId,
             actorUserId: null,
             effectiveAt: TODAY,
@@ -268,13 +275,25 @@ async function main() {
 
           const history = await tx.studentLessonsBalanceHistory.findMany({
             where: { studentId: s, field: 'LESSONS_BALANCE' },
-            select: { meta: true },
+            select: { reason: true, meta: true, comment: true },
           })
           const signed = history.filter(
-            (h) => (h.meta as { relinkTo?: string } | null)?.relinkTo === 'Б',
+            (h) =>
+              h.reason !== 'GROUP_WALLET_CHANGED' &&
+              (h.meta as { relinkTo?: string } | null)?.relinkTo === 'Б',
           )
           assert.equal(signed.length, 4, 'два возврата и два списания подписаны перепривязкой')
           ok('в истории ученика возврат и списание подписаны перепривязкой')
+
+          const events = history.filter((h) => h.reason === 'GROUP_WALLET_CHANGED')
+          assert.equal(events.length, 1, 'смена связи пишет одно событие истории')
+          assert.equal(
+            (events[0]!.meta as { mode?: string }).mode,
+            'REPRICE_HISTORY',
+            'событие называет режим',
+          )
+          assert.equal(events[0]!.comment, 'Проверка переноса', 'событие хранит причину')
+          ok('смена связи пишет событие истории с режимом и причиной')
 
           await rejects(() => relink(s, G, A, B), 'захват по устаревшему кошельку отказывает')
           assert.deepEqual(await row(r1), { price: 800, packageId: pB })
@@ -287,6 +306,59 @@ async function main() {
           assert.equal(await balance(B), 5)
           assert.equal(await revenueOf(s), revenueBefore)
           ok('обратная перепривязка возвращает всё как было')
+        }
+
+        {
+          const s = await student('Без пересчёта')
+          const A = await wallet(s, 'А')
+          const B = await wallet(s, 'Б')
+          await enroll(s, G, A)
+          const pA = await pay(s, A, '2026-09-01', 3_000, 3)
+          const pB = await pay(s, B, '2026-09-01', 4_000, 5)
+          const paid1 = await visit({ studentId: s, groupId: G, date: '2026-09-25' })
+          const paid2 = await visit({ studentId: s, groupId: G, date: '2026-09-26' })
+          const paid3 = await visit({ studentId: s, groupId: G, date: '2026-09-27' })
+          // A выработан: следующее занятие ждёт оплаты.
+          const waiting = await visit({ studentId: s, groupId: G, date: '2026-09-28' })
+          assert.deepEqual(await row(waiting), { price: null, packageId: null })
+          assert.equal(await balance(A), 0)
+
+          const journalBefore = await tx.walletEntry.count({ where: { walletId: A } })
+          const revenueBefore = await revenueOf(s)
+          const report = await transfer({ from: A, to: B, groupIds: [G], mode: 'KEEP_PAID' })
+
+          // Оплаченные строки и их пакеты стоят на месте: меняется только связь.
+          for (const id of [paid1, paid2, paid3]) {
+            assert.deepEqual(await row(id), { price: 1_000, packageId: pA })
+          }
+          assert.equal(await balance(A), 0, 'источник не получает уроки обратно')
+          // Старое неоплаченное занятие закрыл кошелёк-получатель в штатной очереди.
+          assert.deepEqual(await row(waiting), { price: 800, packageId: pB })
+          assert.equal(await balance(B), 4)
+          assert.deepEqual(report.lessons, { repaid: 0, settled: 1, unpaid: 0 })
+          assert.deepEqual(report.revenue, [{ month: '2026-09', delta: 800 }])
+          assert.equal(
+            await tx.walletEntry.count({ where: { walletId: A } }),
+            journalBefore,
+            'журнал источника не тронут',
+          )
+          assert.equal((await revenueOf(s)) - revenueBefore, 800)
+          ok(
+            'режим «без пересчёта»: оплаченные строки и журнал на месте, неоплаченные закрывает получатель',
+          )
+
+          // Обратный перенос без неоплаченных: денег не двигается, событие всё равно пишется.
+          const back = await relink(s, G, B, A, 'KEEP_PAID')
+          assert.deepEqual(back, {
+            moved: 0,
+            settled: 0,
+            skipped: { zero: 0, debt: 0, cancelled: 0 },
+          })
+          const events = await tx.studentLessonsBalanceHistory.count({
+            where: { studentId: s, reason: 'GROUP_WALLET_CHANGED' },
+          })
+          assert.equal(events, 2, 'событие связи — даже без движения денег')
+          ok('событие связи пишется даже без движения денег')
         }
 
         {
@@ -535,7 +607,7 @@ async function main() {
           await pay(s, B, '2026-09-01', 4_000, 5)
           assert.equal((await row(r1)).price, null, 'оплата группу без кошелька не видит')
 
-          const result = await relink(s, G, null, B)
+          const result = await relink(s, G, null, B, 'KEEP_PAID')
 
           assert.equal(result.settled, 1)
           assert.equal((await row(r1)).price, 800)

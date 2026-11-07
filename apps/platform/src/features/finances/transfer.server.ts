@@ -326,18 +326,37 @@ export type RelinkSkipped = {
 }
 
 /**
- * Группа ученика переезжает на другой его кошелёк вместе со своими деньгами.
+ * Чем отличается перепривязка группы, — выбирает менеджер в окне переноса.
+ * - `KEEP_PAID` («Без пересчёта оплаченных»): меняется только связь. Уже оплаченные
+ *   занятия, их пакеты, цены и журнал стоят на месте; все ещё неоплаченные
+ *   подходящие занятия группы начинают закрываться новым кошельком в штатной
+ *   очереди. Это не календарная привязка «с даты»: историю назначений по датам
+ *   система не ведёт.
+ * - `REPRICE_HISTORY` («Пересчитать историю»): прежняя семантика — списания группы
+ *   возвращаются в свои пакеты и гасятся заново из очереди нового кошелька, по его
+ *   ценам. Выручка месяцев занятий при этом двигается, в том числе закрытых.
+ */
+export type RelinkMode = 'KEEP_PAID' | 'REPRICE_HISTORY'
+
+/**
+ * Группа ученика переезжает на другой его кошелёк — в одном из двух режимов
+ * (`RelinkMode`): либо меняется только связь, либо группа едет вместе со своими
+ * деньгами.
  *
- * Списанные уроки группы возвращаются в свои пакеты — туда, где эти пакеты лежат
- * сейчас, — и списываются заново из очереди нового кошелька: по датам занятий и по
- * цене его пакетов. Выручка месяцев этих занятий поэтому двигается, в том числе
- * закрытых (решение 24.09.2026, как у исправления пакета). Уроков не хватило —
- * хвост ждёт оплаты. Вернувшиеся уроки сразу гасят занятия, которые ждали оплаты на
- * своих кошельках: иначе баланс плюсовой, а занятия других групп висят.
+ * `REPRICE_HISTORY`: списанные уроки группы возвращаются в свои пакеты — туда, где
+ * эти пакеты лежат сейчас, — и списываются заново из очереди нового кошелька: по
+ * датам занятий и по цене его пакетов. Выручка месяцев этих занятий поэтому двигается,
+ * в том числе закрытых (решение 24.09.2026, как у исправления пакета). Уроков не
+ * хватило — хвост ждёт оплаты. Вернувшиеся уроки сразу гасят занятия, которые ждали
+ * оплаты на своих кошельках: иначе баланс плюсовой, а занятия других групп висят.
  *
- * Своей денежной арифметики здесь нет: возврат — `unchargeAttendanceTx`, списание —
- * `settleUnpaidAttendancesTx`. Журнал, балансы, остатки и история выходят теми же,
- * что при обычной отметке.
+ * `KEEP_PAID`: оплаченные строки не трогаются вовсе; всё ещё неоплаченные занятия
+ * группы начинает закрывать новый кошелёк в штатной очереди. Своей арифметики у
+ * режима нет — только смена связи и гашение очереди получателя.
+ *
+ * Своей денежной арифметики здесь нет в обоих режимах: возврат —
+ * `unchargeAttendanceTx`, списание — `settleUnpaidAttendancesTx`. Журнал, балансы,
+ * остатки и история выходят теми же, что при обычной отметке.
  *
  * Переезжают строки, которые платит кошелёк группы (`walletOfAttendanceTx`): без
  * кошелька на строке, не пробные, на уроках группы — кроме отработок чужих
@@ -351,6 +370,10 @@ export type RelinkSkipped = {
  *
  * Отметка урока этого ученика в ту же секунду не закрыта: она читает кошелёк группы
  * до нашего коммита и спишет урок со старого кошелька.
+ *
+ * В обоих режимах пишется событие связи `GROUP_WALLET_CHANGED` — даже если денег
+ * не двигали: это единственный след смены кошелька группы в истории ученика
+ * (состав затронутых занятий в `meta` подписи у строк возврата и списания).
  */
 export async function relinkGroupTx(
   tx: Prisma.TransactionClient,
@@ -360,6 +383,10 @@ export async function relinkGroupTx(
     /** Где группа сейчас; null — группа без кошелька. */
     fromWalletId: number | null
     toWalletId: number
+    /** Что делать с уже оплаченными занятиями группы — см. `RelinkMode`. */
+    mode: RelinkMode
+    /** Причина смены кошелька — в событие истории. */
+    comment?: string | null
     organizationId: number
     actorUserId: number | null
   },
@@ -398,77 +425,119 @@ export async function relinkGroupTx(
     relinkTo: walletLabel(target),
   }
 
-  const rows = await tx.attendance.findMany({
-    where: {
-      // Отбор гашения, только списанные: переезжает ровно то, что списание потом
-      // возьмёт заново. Строку, которую оно не возьмёт (урок отменён, статус сменили
-      // мимо денег), возврат оставил бы неоплаченной навсегда.
-      ...UNPAID_ATTENDANCE_WHERE,
-      price: { not: null },
-      packageId: undefined,
-      organizationId,
-      studentId,
-      // С кошельком на строке строку платит он, а не группа. Вместе с отбором гашения
-      // это отсекает и пробные: без кошелька на строке они не платят вовсе.
-      walletId: null,
-      AND: [
-        {
-          OR: [
-            { makeupForAttendanceId: null, lesson: { groupId } },
-            { makeupForAttendance: { lesson: { groupId } } },
-          ],
-        },
-      ],
-    },
-    orderBy: [{ lesson: { date: 'asc' } }, { id: 'asc' }],
-    select: { id: true, package: { select: { status: true, walletId: true } } },
-  })
-
   const skipped: RelinkSkipped = { zero: 0, debt: 0, cancelled: 0 }
-  const returnedTo = new Set<number>()
   let moved = 0
-
-  for (const row of rows) {
-    if (row.package?.status === 'ACTIVE' && row.package.walletId === target.id) continue
-
-    const charge = await tx.walletEntry.findFirst({
-      where: { attendanceId: row.id, kind: WalletEntryKind.CHARGE, reversedBy: { is: null } },
-      select: { id: true },
-    })
-    if (!charge) {
-      skipped.zero += 1
-      continue
-    }
-    if (!row.package) {
-      skipped.debt += 1
-      continue
-    }
-    if (row.package.status !== 'ACTIVE') {
-      skipped.cancelled += 1
-      continue
-    }
-
-    await unchargeAttendanceTx(tx, { attendanceId: row.id, organizationId, actorUserId, meta })
-    returnedTo.add(row.package.walletId)
-    moved += 1
-  }
-
-  // Гасим по балансу каждого кошелька: больше, чем он держит, всё равно не спишется.
-  // Наборы занятий у кошельков разные, порядок ничего не решает.
   let settled = 0
-  for (const walletId of [...returnedTo, target.id]) {
+
+  if (args.mode === 'KEEP_PAID') {
+    // Оплаченные строки не трогаем вовсе. Неоплаченные занятия группы с новой связью
+    // попадают в очередь получателя — гасим её штатным порядком, как это делает
+    // выдача пакета. Гасятся и ждущие занятия других групп того же кошелька:
+    // очередь общая, и это тот же эффект, что у любой оплаты на этот кошелёк.
     const { lessonsBalance } = await tx.wallet.findUniqueOrThrow({
-      where: { id: walletId },
+      where: { id: target.id },
       select: { lessonsBalance: true },
     })
-    settled += await settleUnpaidAttendancesTx(tx, {
-      walletId,
+    settled = await settleUnpaidAttendancesTx(tx, {
+      walletId: target.id,
       organizationId,
       take: lessonsBalance,
       actorUserId,
       meta,
     })
+  } else {
+    const rows = await tx.attendance.findMany({
+      where: {
+        // Отбор гашения, только списанные: переезжает ровно то, что списание потом
+        // возьмёт заново. Строку, которую оно не возьмёт (урок отменён, статус сменили
+        // мимо денег), возврат оставил бы неоплаченной навсегда.
+        ...UNPAID_ATTENDANCE_WHERE,
+        price: { not: null },
+        packageId: undefined,
+        organizationId,
+        studentId,
+        // С кошельком на строке строку платит он, а не группа. Вместе с отбором гашения
+        // это отсекает и пробные: без кошелька на строке они не платят вовсе.
+        walletId: null,
+        AND: [
+          {
+            OR: [
+              { makeupForAttendanceId: null, lesson: { groupId } },
+              { makeupForAttendance: { lesson: { groupId } } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ lesson: { date: 'asc' } }, { id: 'asc' }],
+      select: { id: true, package: { select: { status: true, walletId: true } } },
+    })
+
+    const returnedTo = new Set<number>()
+
+    for (const row of rows) {
+      if (row.package?.status === 'ACTIVE' && row.package.walletId === target.id) continue
+
+      const charge = await tx.walletEntry.findFirst({
+        where: { attendanceId: row.id, kind: WalletEntryKind.CHARGE, reversedBy: { is: null } },
+        select: { id: true },
+      })
+      if (!charge) {
+        skipped.zero += 1
+        continue
+      }
+      if (!row.package) {
+        skipped.debt += 1
+        continue
+      }
+      if (row.package.status !== 'ACTIVE') {
+        skipped.cancelled += 1
+        continue
+      }
+
+      await unchargeAttendanceTx(tx, { attendanceId: row.id, organizationId, actorUserId, meta })
+      returnedTo.add(row.package.walletId)
+      moved += 1
+    }
+
+    // Гасим по балансу каждого кошелька: больше, чем он держит, всё равно не спишется.
+    // Наборы занятий у кошельков разные, порядок ничего не решает.
+    for (const walletId of [...returnedTo, target.id]) {
+      const { lessonsBalance } = await tx.wallet.findUniqueOrThrow({
+        where: { id: walletId },
+        select: { lessonsBalance: true },
+      })
+      settled += await settleUnpaidAttendancesTx(tx, {
+        walletId,
+        organizationId,
+        take: lessonsBalance,
+        actorUserId,
+        meta,
+      })
+    }
   }
+
+  // Событие связи — даже когда денег не двигали (перенос только назначения):
+  // без него смена кошелька группы не оставила бы в истории ученика ничего.
+  const after = await tx.wallet.findUniqueOrThrow({
+    where: { id: target.id },
+    select: { lessonsBalance: true },
+  })
+  await writeFinancialHistoryTx(tx, {
+    organizationId,
+    studentId,
+    actorUserId,
+    groupId,
+    walletId: target.id,
+    field: StudentFinancialField.LESSONS_BALANCE,
+    reason: StudentLessonsBalanceChangeReason.GROUP_WALLET_CHANGED,
+    delta: 0,
+    balanceBefore: after.lessonsBalance,
+    balanceAfter: after.lessonsBalance,
+    comment: args.comment ?? undefined,
+    // Нулевое движение — именно оно и есть содержимое строки.
+    keepZero: true,
+    meta: { ...meta, mode: args.mode },
+  })
 
   return { moved, settled, skipped }
 }
@@ -478,6 +547,10 @@ type TransferArgs = {
   toWalletId: number
   packageIds: number[]
   groupIds: number[]
+  /** Режим перепривязки каждой из выбранных групп — см. `RelinkMode`. */
+  mode: RelinkMode
+  /** Причина перевешивания групп — попадает в событие истории. */
+  comment?: string | null
   organizationId: number
   actorUserId: number | null
   /** День переноса пакетов, а не день продажи: это новое событие. */
@@ -492,6 +565,9 @@ type TransferArgs = {
  * остаются за ним: когда очередь доходит до группы, пакет уже лежит у получателя, и
  * перепривязка их не трогает. В обратном порядке они вернулись бы в пакет до его
  * отъезда и списались бы заново — по другим ценам и без всякой нужды.
+ *
+ * Все группы перевешиваются в одном режиме и с одной причиной: окно не умеет
+ * смешивать режимы внутри одного сохранения.
  */
 export async function transferTx(
   tx: Prisma.TransactionClient,

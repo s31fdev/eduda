@@ -219,6 +219,9 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
         const res = await linkGroupToWallet({
           studentId: student.id,
           groupId: Number(linkGroupId),
+          // Список групп окна — только без кошелька, поэтому ожидание всегда null:
+          // ядро откажет, если связь с тех пор изменилась.
+          fromWalletId: null,
           walletId: Number(linkWalletId),
         })
         if (res?.serverError || res?.validationErrors)
@@ -334,25 +337,27 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
               unpaidLessons={unpaidByWallet?.[w.id] ?? 0}
               actions={
                 // Архивный кошелёк read-only, и единственное исключение — перенос, и
-                // только когда на нём остались уроки: вернуть его из архива нельзя,
-                // так что иначе остаток заперт навсегда. Когда откроется перепривязка
-                // групп, сюда добавится «или на нём висят группы».
+                // только пока на нём есть что перевезти: уроки или висящие на нём
+                // группы. Вернуть его из архива нельзя, так что иначе остаток заперт
+                // навсегда.
                 w.status === 'ARCHIVED' ? (
                   <>
                     <Badge variant="outline">Архив</Badge>
-                    {canMoveMoney && w.lessonsBalance > 0 && activeWallets.length > 0 && (
-                      <WalletActionsMenu
-                        label="Ещё"
-                        disabled={isPending}
-                        actions={[
-                          {
-                            label: 'Перенести на активный кошелёк',
-                            icon: <ArrowLeftRight />,
-                            onSelect: () => openTransferDrawer(w.id),
-                          },
-                        ]}
-                      />
-                    )}
+                    {canMoveMoney &&
+                      (w.lessonsBalance > 0 || w.studentGroups.length > 0) &&
+                      activeWallets.length > 0 && (
+                        <WalletActionsMenu
+                          label="Ещё"
+                          disabled={isPending}
+                          actions={[
+                            {
+                              label: 'Перенести на активный кошелёк',
+                              icon: <ArrowLeftRight />,
+                              onSelect: () => openTransferDrawer(w.id),
+                            },
+                          ]}
+                        />
+                      )}
                   </>
                 ) : (
                   <WalletActionsMenu

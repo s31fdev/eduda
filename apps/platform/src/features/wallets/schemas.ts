@@ -60,18 +60,37 @@ export const TransferPackagesSchema = z
     toWalletId: z.number().int().positive(),
     packageIds: z.array(z.number().int().positive()),
     groupIds: z.array(z.number().int().positive()),
+    /**
+     * Что делать с уже оплаченными занятиями перевешиваемых групп. По умолчанию
+     * оплаченные остаются на месте (решение зафиксировано в дизайне от 05.11.2026).
+     */
+    mode: z.enum(['KEEP_PAID', 'REPRICE_HISTORY']).default('KEEP_PAID'),
+    /** Причина перевешивания групп — попадает в событие истории ученика. */
+    comment: z.string().trim().max(500, 'Слишком длинно').optional(),
   })
   .refine((v) => v.packageIds.length + v.groupIds.length > 0, {
     message: 'Выберите пакет или группу',
+  })
+  // Причина обязательна, только когда едут группы: у пакетов есть своя подпись
+  // (перенос), а событие истории пишется именно за смену связи группы.
+  .refine((v) => v.groupIds.length === 0 || (v.comment ?? '').trim().length >= 3, {
+    message: 'Напишите причину перепривязки',
+    path: ['comment'],
   })
 
 export const WalletPackagesSchema = z.object({
   walletId: z.number().int().positive(),
 })
 
+/**
+ * Ожидаемый нынешний кошелёк группы — тот, что видел пользователь, когда открывал
+ * форму. Захват ядра строится по нему: устаревшее значение даёт отказ вместо молчаливой
+ * переписки чужой связи. null — группа без кошелька (первая привязка).
+ */
 export const LinkGroupToWalletSchema = z.object({
   studentId: z.number().int().positive(),
   groupId: z.number().int().positive(),
+  fromWalletId: z.number().int().positive().nullable(),
   walletId: z.number().int().positive(),
 })
 
