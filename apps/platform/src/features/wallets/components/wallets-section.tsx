@@ -52,15 +52,16 @@ import { getGroupName } from '@/src/lib/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
-  ArrowLeftRight,
   Link2,
   Loader,
+  Package,
   PackageOpen,
   Pen,
   Plus,
   Settings,
   TrendingDown,
   TriangleAlert,
+  Users,
   Wallet,
 } from 'lucide-react'
 import { useState, useTransition, type ReactNode } from 'react'
@@ -142,6 +143,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
 
   // Transfer state
   const [transferFromWalletId, setTransferFromWalletId] = useState<number | null>(null)
+  const [transferInitial, setTransferInitial] = useState<'packages' | 'groups'>('packages')
 
   // Кошелёк, пакет которого правят.
   const [packageWalletId, setPackageWalletId] = useState<number | null>(null)
@@ -176,8 +178,9 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
     setActiveDrawer('edit')
   }
 
-  const openTransferDrawer = (walletId: number) => {
+  const openTransferDrawer = (walletId: number, initial: 'packages' | 'groups') => {
     setTransferFromWalletId(walletId)
+    setTransferInitial(initial)
     setActiveDrawer('transfer')
   }
 
@@ -343,21 +346,32 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                 w.status === 'ARCHIVED' ? (
                   <>
                     <Badge variant="outline">Архив</Badge>
-                    {canMoveMoney &&
-                      (w.lessonsBalance > 0 || w.studentGroups.length > 0) &&
-                      activeWallets.length > 0 && (
-                        <WalletActionsMenu
-                          label="Ещё"
-                          disabled={isPending}
-                          actions={[
-                            {
-                              label: 'Перепривязка на активный кошелёк',
-                              icon: <ArrowLeftRight />,
-                              onSelect: () => openTransferDrawer(w.id),
-                            },
-                          ]}
-                        />
-                      )}
+                    {canMoveMoney && activeWallets.length > 0 && (
+                      <WalletActionsMenu
+                        label="Ещё"
+                        disabled={isPending}
+                        actions={[
+                          ...(w.lessonsBalance > 0
+                            ? [
+                                {
+                                  label: 'Перенести пакет',
+                                  icon: <Package />,
+                                  onSelect: () => openTransferDrawer(w.id, 'packages'),
+                                },
+                              ]
+                            : []),
+                          ...(w.studentGroups.length > 0
+                            ? [
+                                {
+                                  label: 'Перенести группу',
+                                  icon: <Users />,
+                                  onSelect: () => openTransferDrawer(w.id, 'groups'),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                    )}
                   </>
                 ) : (
                   <WalletActionsMenu
@@ -381,9 +395,18 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                       ...(canMoveMoney && activeWallets.length >= 2
                         ? [
                             {
-                              label: 'Перепривязка',
-                              icon: <ArrowLeftRight />,
-                              onSelect: () => openTransferDrawer(w.id),
+                              label: 'Перенести пакет',
+                              icon: <Package />,
+                              onSelect: () => openTransferDrawer(w.id, 'packages'),
+                            },
+                          ]
+                        : []),
+                      ...(canMoveMoney && activeWallets.length >= 2 && w.studentGroups.length > 0
+                        ? [
+                            {
+                              label: 'Перенести группу',
+                              icon: <Users />,
+                              onSelect: () => openTransferDrawer(w.id, 'groups'),
                             },
                           ]
                         : []),
@@ -490,6 +513,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
             <TransferPackagesDrawer
               student={student}
               fromWalletId={transferFromWalletId}
+              initial={transferInitial}
               onDone={() => {
                 setActiveDrawer(null)
                 setTransferFromWalletId(null)

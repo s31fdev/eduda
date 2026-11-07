@@ -5,7 +5,6 @@ import { Badge } from '@repo/ui/components/badge'
 import { Button } from '@repo/ui/components/button'
 import { Checkbox } from '@repo/ui/components/checkbox'
 import { ScrollArea } from '@repo/ui/components/scroll-area'
-import { Switch } from '@repo/ui/components/switch'
 import { Field, FieldDescription, FieldLabel } from '@repo/ui/components/field'
 import { Input } from '@repo/ui/components/input'
 import { RadioGroup, RadioGroupItem } from '@repo/ui/components/radio-group'
@@ -51,11 +50,16 @@ const lessonsWord = (n: number) => plural(n, 'занятие', 'занятия',
 interface TransferPackagesDrawerProps {
   student: StudentDetail
   fromWalletId: number
+  /** Что переносим этим окном: пакеты или группы. Пункты меню кошелька открывают
+   *  окно в своём режиме — смешивать в одном сохранении их больше не нужно. */
+  initial: 'packages' | 'groups'
   onDone: () => void
 }
 
 /**
- * Перенос на другой кошелёк того же ученика: пакеты и группы, одним сохранением.
+ * Перенос на другой кошелёк того же ученика — пакетов или групп, по отдельности:
+ * пункт меню кошелька («Перенести пакет» / «Перенести группу») открывает окно в
+ * своём режиме (`initial`) и показывает только свою секцию.
  *
  * Переносится пакет целиком, а не уроки: урок несёт цену своего пакета. Поэтому
  * здесь выбирают пакеты галочками, а не вводят количество. В списке только пакеты с
@@ -64,8 +68,7 @@ interface TransferPackagesDrawerProps {
  * Группа переезжает на выбранный кошелёк в одном из двух режимов: «Без пересчёта
  * оплаченных» меняет только связь — неоплаченные занятия группы начинает закрывать
  * новый кошелёк; «Пересчитать историю» возвращает оплаченные занятия в свои пакеты
- * и списывает их заново из пакетов получателя (`relinkGroupTx`). Сначала едут
- * пакеты, потом группы — занятия, оплаченные переезжающим пакетом, остаются за ним.
+ * и списывает их заново из пакетов получателя (`relinkGroupTx`).
  *
  * Сводка — это сам перенос, прогнанный вхолостую на сервере: что покажет окно, то
  * сохранение и запишет. Два предупреждения смотрят вперёд, куда прогон не видит:
@@ -75,12 +78,12 @@ interface TransferPackagesDrawerProps {
 export function TransferPackagesDrawer({
   student,
   fromWalletId,
+  initial,
   onDone,
 }: TransferPackagesDrawerProps) {
   const [selected, setSelected] = useState<number[]>([])
   const [groupIds, setGroupIds] = useState<number[]>([])
   const [toWalletId, setToWalletId] = useState<string>('')
-  const [movePackages, setMovePackages] = useState(true)
   // Режим перепривязки групп: оплаченные остаются на месте (по умолчанию) или
   // история пересчитывается из пакетов получателя.
   const [mode, setMode] = useState<'KEEP_PAID' | 'REPRICE_HISTORY'>('KEEP_PAID')
@@ -132,7 +135,7 @@ export function TransferPackagesDrawer({
   return (
     <>
       <DrawerHeader className="pb-4">
-        <DrawerTitle>Перенос</DrawerTitle>
+        <DrawerTitle>{initial === 'packages' ? 'Перенос пакетов' : 'Перенос групп'}</DrawerTitle>
         <DrawerDescription>Из «{source ? getWalletLabel(source) : 'Кошелёк'}».</DrawerDescription>
       </DrawerHeader>
 
@@ -151,142 +154,133 @@ export function TransferPackagesDrawer({
             )}
           </Field>
 
-          <Field>
-            {/* Выключенный — «перевесить только группы, пакеты не трогать». */}
-            <div className="flex items-center justify-between gap-2">
-              <FieldLabel htmlFor="transfer-packages-toggle">Пакеты</FieldLabel>
-              <Switch
-                id="transfer-packages-toggle"
-                checked={movePackages}
-                onCheckedChange={(on) => {
-                  setMovePackages(Boolean(on))
-                  if (!on) setSelected([])
-                }}
-              />
-            </div>
-            {!movePackages ? (
-              <p className="text-muted-foreground text-sm">Пакеты остаются на этом кошельке.</p>
-            ) : isPending ? (
-              <p className="text-muted-foreground text-sm">Загрузка…</p>
-            ) : !packages || packages.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Нет доступных пакетов</p>
-            ) : (
-              <div className="space-y-2">
-                {packages.map((p) => (
-                  <label
-                    key={p.id}
-                    className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
-                  >
-                    <Checkbox
-                      className="mt-0.5"
-                      checked={selected.includes(p.id)}
-                      onCheckedChange={(val) => toggle(p.id, Boolean(val))}
-                    />
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">
-                          {p.productName || 'Пакет'}
-                        </span>
-                        {p.status === 'PENDING' && (
-                          <Badge variant="outline" className="shrink-0">
-                            Ждёт оплаты
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
-                        <span>{formatDateOnly(p.date)}</span>
-                        <span aria-hidden>·</span>
-                        {p.status === 'PENDING' ? (
-                          <span>
-                            {p.lessonCount} ур. за {money(p.price)}
+          {initial === 'packages' && (
+            <Field>
+              <FieldLabel>Пакеты</FieldLabel>
+              {isPending ? (
+                <p className="text-muted-foreground text-sm">Загрузка…</p>
+              ) : !packages || packages.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Нет доступных пакетов</p>
+              ) : (
+                <div className="space-y-2">
+                  {packages.map((p) => (
+                    <label
+                      key={p.id}
+                      className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
+                    >
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={selected.includes(p.id)}
+                        onCheckedChange={(val) => toggle(p.id, Boolean(val))}
+                      />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">
+                            {p.productName || 'Пакет'}
                           </span>
-                        ) : (
-                          <>
-                            <span className="text-foreground font-medium">
-                              осталось {p.remaining} из {p.lessonCount} ур.
+                          {p.status === 'PENDING' && (
+                            <Badge variant="outline" className="shrink-0">
+                              Ждёт оплаты
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
+                          <span>{formatDateOnly(p.date)}</span>
+                          <span aria-hidden>·</span>
+                          {p.status === 'PENDING' ? (
+                            <span>
+                              {p.lessonCount} ур. за {money(p.price)}
                             </span>
-                            <span aria-hidden>·</span>
-                            <span>{money(p.unitPrice)} за урок</span>
-                          </>
-                        )}
+                          ) : (
+                            <>
+                              <span className="text-foreground font-medium">
+                                осталось {p.remaining} из {p.lessonCount} ур.
+                              </span>
+                              <span aria-hidden>·</span>
+                              <span>{money(p.unitPrice)} за урок</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-          </Field>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </Field>
+          )}
 
-          <Field>
-            <FieldLabel>Группы</FieldLabel>
-            {groups.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                К кошельку не привязано ни одной группы
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {groups.map((sg) => (
-                  <label
-                    key={sg.groupId}
-                    className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
-                  >
-                    <Checkbox
-                      checked={groupIds.includes(sg.groupId)}
-                      onCheckedChange={(val) => toggleGroup(sg.groupId, Boolean(val))}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {getGroupName(sg.group)}
-                    </span>
-                    {/* Отчисленные и закончившие тоже переезжают: их прошлые занятия
+          {initial === 'groups' && (
+            <Field>
+              <FieldLabel>Группы</FieldLabel>
+              {groups.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  К кошельку не привязано ни одной группы
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {groups.map((sg) => (
+                    <label
+                      key={sg.groupId}
+                      className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+                    >
+                      <Checkbox
+                        checked={groupIds.includes(sg.groupId)}
+                        onCheckedChange={(val) => toggleGroup(sg.groupId, Boolean(val))}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {getGroupName(sg.group)}
+                      </span>
+                      {/* Отчисленные и закончившие тоже переезжают: их прошлые занятия
                         оплачены с этого кошелька так же, как у занимающихся. */}
-                    {sg.status !== 'ACTIVE' && (
-                      <Badge variant="outline" className="shrink-0">
-                        {StudentStatusMap[sg.status]}
-                      </Badge>
-                    )}
-                  </label>
-                ))}
-              </div>
-            )}
+                      {sg.status !== 'ACTIVE' && (
+                        <Badge variant="outline" className="shrink-0">
+                          {StudentStatusMap[sg.status]}
+                        </Badge>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
 
-            {groupIds.length > 0 && (
-              <div className="space-y-3">
-                <RadioGroup
-                  value={mode}
-                  onValueChange={(v) => setMode(v as 'KEEP_PAID' | 'REPRICE_HISTORY')}
-                >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="KEEP_PAID" id="relink-mode-keep" />
-                    <FieldLabel htmlFor="relink-mode-keep" className="font-normal">
-                      Без пересчёта оплаченных
-                    </FieldLabel>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="REPRICE_HISTORY" id="relink-mode-reprice" />
-                    <FieldLabel htmlFor="relink-mode-reprice" className="font-normal">
-                      Пересчитать историю
-                    </FieldLabel>
-                  </div>
-                </RadioGroup>
+              {groupIds.length > 0 && (
+                <div className="space-y-3">
+                  <RadioGroup
+                    value={mode}
+                    onValueChange={(v) => setMode(v as 'KEEP_PAID' | 'REPRICE_HISTORY')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="KEEP_PAID" id="relink-mode-keep" />
+                      <FieldLabel htmlFor="relink-mode-keep" className="font-normal">
+                        Без пересчёта оплаченных
+                      </FieldLabel>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="REPRICE_HISTORY" id="relink-mode-reprice" />
+                      <FieldLabel htmlFor="relink-mode-reprice" className="font-normal">
+                        Пересчитать историю
+                      </FieldLabel>
+                    </div>
+                  </RadioGroup>
 
-                <Field>
-                  <FieldLabel htmlFor="relink-comment">Причина (необязательно)</FieldLabel>
-                  <Input
-                    id="relink-comment"
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder="Например: оплаты курса теперь идут на общий кошелёк"
-                  />
-                </Field>
+                  <Field>
+                    <FieldLabel htmlFor="relink-comment">Причина (необязательно)</FieldLabel>
+                    <Input
+                      id="relink-comment"
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      placeholder="Например: оплаты курса теперь идут на общий кошелёк"
+                    />
+                  </Field>
 
-                <FieldDescription>
-                  {mode === 'KEEP_PAID'
-                    ? 'Оплаченные занятия останутся за прежними пакетами, неоплаченные начнёт закрывать кошелёк-получатель. Старые неоплаченные занятия могут списаться.'
-                    : 'Оплаченные занятия вернутся в свои пакеты и спишутся заново — из пакетов получателя и по их цене, прошлая выручка изменится. Старые неоплаченные занятия могут списаться.'}
-                </FieldDescription>
-              </div>
-            )}
-          </Field>
+                  <FieldDescription>
+                    {mode === 'KEEP_PAID'
+                      ? 'Оплаченные занятия останутся за прежними пакетами, неоплаченные начнёт закрывать кошелёк-получатель. Старые неоплаченные занятия могут списаться.'
+                      : 'Оплаченные занятия вернутся в свои пакеты и спишутся заново — из пакетов получателя и по их цене, прошлая выручка изменится. Старые неоплаченные занятия могут списаться.'}
+                  </FieldDescription>
+                </div>
+              )}
+            </Field>
+          )}
 
           {error && (
             <Alert variant="destructive">
@@ -409,8 +403,8 @@ export function TransferPackagesDrawer({
                 <TriangleAlert />
                 <AlertTitle>Кошелёк останется без уроков</AlertTitle>
                 <AlertDescription>
-                  Занятия будут ждать оплаты: {preview.orphanedGroups.join(', ')}. Отметьте их в
-                  «Группах», чтобы перевесить вместе с пакетами.
+                  Занятия будут ждать оплаты: {preview.orphanedGroups.join(', ')}. Переведите группы
+                  отдельным действием «Перенести группу».
                 </AlertDescription>
               </Alert>
             )}
