@@ -65,17 +65,11 @@ export const TransferPackagesSchema = z
      * оплаченные остаются на месте (решение зафиксировано в дизайне от 05.11.2026).
      */
     mode: z.enum(['KEEP_PAID', 'REPRICE_HISTORY']).default('KEEP_PAID'),
-    /** Причина перевешивания групп — попадает в событие истории ученика. */
+    /** Причина перевешивания групп — попадает в событие истории ученика. Необязательна. */
     comment: z.string().trim().max(500, 'Слишком длинно').optional(),
   })
   .refine((v) => v.packageIds.length + v.groupIds.length > 0, {
     message: 'Выберите пакет или группу',
-  })
-  // Причина обязательна, только когда едут группы: у пакетов есть своя подпись
-  // (перенос), а событие истории пишется именно за смену связи группы.
-  .refine((v) => v.groupIds.length === 0 || (v.comment ?? '').trim().length >= 3, {
-    message: 'Напишите причину перепривязки',
-    path: ['comment'],
   })
 
 export const WalletPackagesSchema = z.object({

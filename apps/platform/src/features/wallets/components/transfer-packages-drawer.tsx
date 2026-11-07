@@ -92,7 +92,15 @@ export function TransferPackagesDrawer({
   const targetId = toWalletId ? Number(toWalletId) : null
   const values =
     targetId !== null && selected.length + groupIds.length > 0
-      ? { fromWalletId, toWalletId: targetId, packageIds: selected, groupIds, mode, comment }
+      ? {
+          fromWalletId,
+          toWalletId: targetId,
+          packageIds: selected,
+          groupIds,
+          mode,
+          // Пустая причина — это её отсутствие: в истории храним null, а не ''.
+          comment: comment.trim() || undefined,
+        }
       : null
   const { data: lastPreview, isFetching, error } = useTransferPreviewQuery(values)
   // `keepPreviousData` отдаёт прошлый ответ и выключенному запросу, поэтому сводка
@@ -120,9 +128,6 @@ export function TransferPackagesDrawer({
     if (!values) return
     transferMutation.mutate(values, { onSuccess: () => onDone() })
   }
-
-  // Причина обязательна, только когда едут группы — её прочитают в истории ученика.
-  const commentValid = groupIds.length === 0 || comment.trim().length >= 3
 
   return (
     <>
@@ -265,7 +270,7 @@ export function TransferPackagesDrawer({
                 </RadioGroup>
 
                 <Field>
-                  <FieldLabel htmlFor="relink-comment">Причина перепривязки</FieldLabel>
+                  <FieldLabel htmlFor="relink-comment">Причина (необязательно)</FieldLabel>
                   <Input
                     id="relink-comment"
                     value={comment}
@@ -415,7 +420,7 @@ export function TransferPackagesDrawer({
 
       <DrawerFooter className="pt-4">
         <DrawerClose render={<Button variant="outline" />}>Отмена</DrawerClose>
-        <Button onClick={submit} disabled={!values || !commentValid || transferMutation.isPending}>
+        <Button onClick={submit} disabled={!values || transferMutation.isPending}>
           {transferMutation.isPending && <Loader className="animate-spin" />}
           Перенести
         </Button>
