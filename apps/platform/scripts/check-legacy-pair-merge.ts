@@ -130,6 +130,35 @@ async function main() {
         'повторный прогон не находит слитые пакеты',
       )
 
+      // ─── Частичное добивание: явно названным кошелькам — сколько есть ─────
+      // Решение по списку от 07.11.2026: недостача в доли урока — артефакт
+      // старого счётчика, а не скидка, поэтому цена урока не пересчитывается.
+      const wd = await newWallet()
+      await money(wd, '2025-09-01', 1_000)
+      const pd = await legacy(wd, 2, 800)
+
+      const planD = await planLegacyPairMerge(tx, {
+        allowPartial: (packet) => packet.walletId === wd,
+      })
+      const coveredD = planD.covered.find((c) => c.packet.id === pd.id)
+      assert.deepEqual(
+        coveredD && { claim: coveredD.claim, partial: coveredD.partial },
+        { claim: 1_000, partial: true },
+        'добивается имеющимся, а не claim',
+      )
+      await applyLegacyPairMerge(tx, [coveredD!])
+      assert.equal(await priceOf(pd.id), 1_000, 'сумма — что нашлась')
+      assert.equal(
+        (
+          await tx.package.findUniqueOrThrow({
+            where: { id: pd.id },
+            select: { unitPrice: true },
+          })
+        ).unitPrice,
+        800,
+        'цена урока не пересчитывается — иначе исказится выручка',
+      )
+
       // ─── Гард: пакет изменился между планом и записью — отказ, а не запись ──
       // Последним: после брошенной внутри транзакции ошибки PostgreSQL её
       // откатывает, и дальше в ней читать нельзя.

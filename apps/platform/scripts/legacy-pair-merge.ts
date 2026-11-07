@@ -16,7 +16,7 @@ export type LegacyPairCandidate = {
   student: { lastName: string; firstName: string }
 }
 
-export type LegacyPairPlanItem = { packet: LegacyPairCandidate; claim: number }
+export type LegacyPairPlanItem = { packet: LegacyPairCandidate; claim: number; partial?: boolean }
 export type LegacyPairUncovered = { packet: LegacyPairCandidate; claim: number; available: number }
 
 export type LegacyPairPlan = {
@@ -32,8 +32,16 @@ export type LegacyPairPlan = {
  *
  * Несколько пакетов на одном кошельке делят общий котёл в порядке `(date, id)`:
  * кому не хватило — попадают в непокрытые целиком, частичной перекладки нет.
+ *
+ * Исключение — явно названные кошельки (`allowPartial`): им перекладывается
+ * сколько есть (решение от 07.11.2026 по списку кошельков, где недостача —
+ * доли цены урока). Цена урока при этом НЕ пересчитывается: недостача —
+ * артефакт старого счётчика, а не скидка на занятия.
  */
-export async function planLegacyPairMerge(tx: Prisma.TransactionClient): Promise<LegacyPairPlan> {
+export async function planLegacyPairMerge(
+  tx: Prisma.TransactionClient,
+  opts: { allowPartial?: (packet: LegacyPairCandidate) => boolean } = {},
+): Promise<LegacyPairPlan> {
   const candidates = await tx.package.findMany({
     where: {
       paymentId: null,
@@ -83,7 +91,14 @@ export async function planLegacyPairMerge(tx: Prisma.TransactionClient): Promise
     const left = available.get(packet.walletId) ?? totalByWallet.get(packet.walletId) ?? 0
     available.set(packet.walletId, left)
     if (left < claim) {
-      uncovered.push({ packet, claim, available: left })
+      // Частичное добивание — только явно названным кошелькам и только когда
+      // перекладывать есть что: нулевая перекладка смысла не имеет.
+      if (left > 0 && opts.allowPartial?.(packet)) {
+        covered.push({ packet, claim: left, partial: true })
+        available.set(packet.walletId, 0)
+      } else {
+        uncovered.push({ packet, claim, available: left })
+      }
     } else {
       covered.push({ packet, claim })
       available.set(packet.walletId, left - claim)

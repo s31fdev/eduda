@@ -29,6 +29,11 @@
  * Сам расчёт и запись — в `legacy-pair-merge.ts`, они же проверяются
  * сценариями `check-legacy-pair-merge.ts`.
  *
+ * Частичное добивание: `--partial-wallets=1090,1109,...` — перечисленным
+ * кошелькам перекладывается сколько есть, даже если на claim не хватает
+ * (решение от 07.11.2026: недостача в доли урока — артефакт старого счётчика;
+ * цена урока не пересчитывается). Без флага такие пакеты — в непокрытых.
+ *
  *   pnpm --filter platform exec tsx scripts/merge-legacy-unstarted-pairs.ts          # сводка
  *   pnpm --filter platform exec tsx scripts/merge-legacy-unstarted-pairs.ts --apply  # записать
  */
@@ -38,12 +43,23 @@ import { prisma } from '@repo/db'
 import { applyLegacyPairMerge, planLegacyPairMerge } from './legacy-pair-merge'
 
 const APPLY = process.argv.includes('--apply')
+const partialArg = process.argv.find((a) => a.startsWith('--partial-wallets='))
+const partialWallets = new Set(
+  partialArg
+    ? partialArg
+        .slice('--partial-wallets='.length)
+        .split(',')
+        .map((s) => Number(s.trim()))
+    : [],
+)
 
 const rub = (v: number) => `${v.toLocaleString('ru-RU')} ₽`
 
 async function main() {
   const plan = await prisma.$transaction(async (tx) => {
-    const built = await planLegacyPairMerge(tx)
+    const built = await planLegacyPairMerge(tx, {
+      allowPartial: (packet) => partialWallets.has(packet.walletId),
+    })
     if (!APPLY) return built
 
     await applyLegacyPairMerge(tx, built.covered)
@@ -55,12 +71,15 @@ async function main() {
   console.info(line)
   console.info(`Неначатых legacy-пакетов: ${plan.unstarted}`)
   console.info(`  покрываются деньгами кошелька: ${plan.covered.length}`)
+  console.info(
+    `    из них частично (сколько есть): ${plan.covered.filter((p) => p.partial).length}`,
+  )
   console.info(`  не покрываются (ручной разбор): ${plan.uncovered.length}`)
   console.info(`Перекладывается всего: ${rub(plan.covered.reduce((sum, p) => sum + p.claim, 0))}`)
 
-  for (const { packet, claim } of plan.covered) {
+  for (const { packet, claim, partial } of plan.covered) {
     console.info(
-      `  #${packet.id} кошелёк #${packet.walletId} ${packet.student.lastName} ${packet.student.firstName}: ${rub(claim)}`,
+      `  #${packet.id} кошелёк #${packet.walletId} ${packet.student.lastName} ${packet.student.firstName}: ${rub(claim)}${partial ? ' (частично)' : ''}`,
     )
   }
 
