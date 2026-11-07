@@ -351,7 +351,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                           disabled={isPending}
                           actions={[
                             {
-                              label: 'Перенести на активный кошелёк',
+                              label: 'Перепривязка на активный кошелёк',
                               icon: <ArrowLeftRight />,
                               onSelect: () => openTransferDrawer(w.id),
                             },
@@ -381,7 +381,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                       ...(canMoveMoney && activeWallets.length >= 2
                         ? [
                             {
-                              label: 'Перенести на другой кошелёк',
+                              label: 'Перепривязка',
                               icon: <ArrowLeftRight />,
                               onSelect: () => openTransferDrawer(w.id),
                             },

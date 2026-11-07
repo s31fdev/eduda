@@ -45,7 +45,7 @@ const plural = (n: number, one: string, few: string, many: string) => {
 const lessonsWord = (n: number) => plural(n, 'занятие', 'занятия', 'занятий')
 
 // Перепривязка групп открыта (решение 07.11.2026): ядро, экшен и сверка готовы
-// (`relinkGroupTx`, `check-group-relink.ts`), секция «Перепривязка» в окне работает
+// (`relinkGroupTx`, `check-group-relink.ts`), секция «Группы» в окне работает
 // в двух режимах — см. `RelinkMode` в `transfer.server.ts`.
 
 interface TransferPackagesDrawerProps {
@@ -218,7 +218,7 @@ export function TransferPackagesDrawer({
           </Field>
 
           <Field>
-            <FieldLabel>Перепривязка</FieldLabel>
+            <FieldLabel>Группы</FieldLabel>
             {groups.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 К кошельку не привязано ни одной группы
@@ -410,7 +410,7 @@ export function TransferPackagesDrawer({
                 <AlertTitle>Кошелёк останется без уроков</AlertTitle>
                 <AlertDescription>
                   Занятия будут ждать оплаты: {preview.orphanedGroups.join(', ')}. Отметьте их в
-                  «Перепривязке», чтобы перевесить вместе с пакетами.
+                  «Группах», чтобы перевесить вместе с пакетами.
                 </AlertDescription>
               </Alert>
             )}
