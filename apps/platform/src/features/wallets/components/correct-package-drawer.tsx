@@ -83,7 +83,9 @@ export function CorrectPackageDrawer({
       ? 'У подарка нет суммы.'
       : facts.fromCrm
         ? 'Сумма пришла из счёта amoCRM.'
-        : null
+        : !facts.hasPayment && facts.price === 0
+          ? 'У пакета нет денег — сумму здесь не правим.'
+          : null
 
   const balanceBefore = wallet?.lessonsBalance ?? 0
   const balanceAfterDelta = balanceBefore + (plan?.lessonDelta ?? 0)

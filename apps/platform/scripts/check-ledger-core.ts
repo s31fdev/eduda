@@ -742,8 +742,10 @@ async function main() {
       )
       await assertBalanced(mergedWallet, 'правка слившегося пакета')
 
-      // Непокрытый legacy (денег в паре не нашлось: цена урока есть, суммы нет)
-      // по-прежнему не правится — его деньги разбираются вручную.
+      // Непокрытый legacy (денег в паре не нашлось: цена урока есть, суммы нет).
+      // Количество правится свободно — это и есть инструмент, которым школа
+      // разбирает перенесённые остатки. Цена урока при этом не пересчитывается:
+      // делить ноль на количество — значит стереть выручку прошедших занятий.
       const uncoveredWallet = await newWallet()
       const uncovered = await tx.package.create({
         data: {
@@ -759,10 +761,28 @@ async function main() {
         select: { id: true },
       })
       await activatePackageTx(tx, { packageId: uncovered.id, organizationId, actorUserId: null })
+      const uncoveredVisit = await visit({ walletId: uncoveredWallet })
+      await charge(uncoveredVisit)
+      assert.equal((await entryOf(uncoveredVisit)).price, 800, 'списание по цене перехода')
+      await correct(uncovered.id, 6, 0)
+      assert.deepEqual(
+        await packetOf(uncovered.id),
+        { lessonCount: 6, remaining: 5, price: 0, unitPrice: 800 },
+        'количество правится, а цена урока остаётся той, что приехала со списаниями',
+      )
+      assert.equal(
+        (await entryOf(uncoveredVisit)).price,
+        800,
+        'прошедшее занятие не переоценено — выручка его месяца не сдвинулась',
+      )
+      assert.equal(await balance(uncoveredWallet), 5, 'баланс вырос на прибавку: 3 + 2')
+      await assertBalanced(uncoveredWallet, 'правка непокрытого пакета')
+      // А сумму поставить нельзя: денег под пакетом нет, и правка не должна
+      // рисовать оплату, которой не было.
       await assert.rejects(
-        correct(uncovered.id, 6, 0),
-        /перенесён из старой системы/,
-        'непокрытый пакет перехода под запретом',
+        () => correct(uncovered.id, 6, 1_000),
+        /нет денег/,
+        'сумма пакету без денег не назначается',
       )
 
       // Взнос заведён как «1 занятие за 11 834 ₽», одно списалось, следующее ждёт
@@ -884,7 +904,7 @@ async function main() {
         },
         select: { id: true },
       })
-      await assert.rejects(() => correct(legacyLeftover.id, 4, 0), /старой системы/)
+      await assert.rejects(() => correct(legacyLeftover.id, 3, 875), /нет денег/)
       await tx.package.update({ where: { id: typo.id }, data: { status: 'CANCELLED' } })
       await assert.rejects(() => correct(typo.id, 5, 5_490), /Отменённый/)
       await tx.wallet.update({ where: { id: giftWallet }, data: { status: 'ARCHIVED' } })
