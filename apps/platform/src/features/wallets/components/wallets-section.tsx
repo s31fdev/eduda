@@ -399,10 +399,6 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
                               icon: <Package />,
                               onSelect: () => openTransferDrawer(w.id, 'packages'),
                             },
-                          ]
-                        : []),
-                      ...(canMoveMoney && activeWallets.length >= 2 && w.studentGroups.length > 0
-                        ? [
                             {
                               label: 'Перенести группу',
                               icon: <Users />,
