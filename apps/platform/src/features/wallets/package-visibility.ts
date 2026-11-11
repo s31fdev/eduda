@@ -4,6 +4,7 @@ export const visibleWalletPackages = {
   NOT: {
     productName: 'Оплачено до перехода',
     paymentId: null,
+    price: 0,
     lessonCount: 0,
     remaining: 0,
   },
