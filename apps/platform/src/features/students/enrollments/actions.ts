@@ -50,15 +50,16 @@ const chartAction = permissionAction({ student: ['read'] }).use(async ({ next, c
  * список, а не подстановка поля из запроса: `sort` приходит из адресной строки.
  * Неизвестный ключ даёт порядок по умолчанию, без ошибки.
  *
- * Преподавателя здесь нет: их у группы несколько, и «сортировка по списку имён»
- * ничего осмысленного не означает. Баланса и сумм тоже — они на кошельке, а
- * кошелька у записи может не быть вовсе, и Prisma по nullable-связи сортирует
- * непредсказуемо для страницы.
+ * Сортировка по полям кошелька обрабатывается отдельно, чтобы записи без кошелька
+ * оставались в начале при любом направлении.
  */
 const ENROLLMENT_ORDER_BY: Record<string, (dir: Prisma.SortOrder) => EnrollmentOrderBy[]> = {
   student: (dir) => [{ student: { firstName: dir } }, { student: { lastName: dir } }],
   course: (dir) => [{ group: { course: { name: dir } } }],
   location: (dir) => [{ group: { location: { name: dir } } }],
+  totalPayments: (dir) => [{ wallet: { totalPayments: dir } }],
+  totalLessons: (dir) => [{ wallet: { totalLessons: dir } }],
+  lessonsBalance: (dir) => [{ wallet: { lessonsBalance: dir } }],
   statusChangedAt: (dir) => [{ statusChangedAt: dir }],
 }
 
@@ -149,6 +150,47 @@ export const getEnrollments = permissionAction({ student: ['read'] })
   .action(async ({ ctx, parsedInput }): Promise<EnrollmentListResult> => {
     const { page, pageSize, sort } = parsedInput
     const where = enrollmentWhere(parsedInput, ctx.session.organizationId!)
+    const skip = page * pageSize
+    const orderBy = resolveOrderBy(sort)
+
+    if (
+      sort?.id === 'lessonsBalance' ||
+      sort?.id === 'totalPayments' ||
+      sort?.id === 'totalLessons'
+    ) {
+      return prisma.$transaction(
+        async (tx) => {
+          const withWallet = { ...where, walletId: { not: null } }
+          const withoutWallet = { ...where, walletId: null }
+          const withoutWalletCount = await tx.studentGroup.count({ where: withoutWallet })
+          const rows =
+            skip < withoutWalletCount
+              ? await tx.studentGroup.findMany({
+                  where: withoutWallet,
+                  select: ENROLLMENT_LIST_SELECT,
+                  orderBy,
+                  skip,
+                  take: pageSize,
+                })
+              : []
+          const remaining = pageSize - rows.length
+          if (remaining > 0) {
+            rows.push(
+              ...(await tx.studentGroup.findMany({
+                where: withWallet,
+                select: ENROLLMENT_LIST_SELECT,
+                orderBy,
+                skip: Math.max(0, skip - withoutWalletCount),
+                take: remaining,
+              })),
+            )
+          }
+          const total = withoutWalletCount + (await tx.studentGroup.count({ where: withWallet }))
+          return { rows, total }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      )
+    }
 
     // Одной транзакцией: строки и их количество обязаны быть посчитаны по одному и
     // тому же состоянию базы, иначе между запросами кого-нибудь отчислят и
@@ -157,8 +199,8 @@ export const getEnrollments = permissionAction({ student: ['read'] })
       prisma.studentGroup.findMany({
         where,
         select: ENROLLMENT_LIST_SELECT,
-        orderBy: resolveOrderBy(sort),
-        skip: page * pageSize,
+        orderBy,
+        skip,
         take: pageSize,
       }),
       prisma.studentGroup.count({ where }),

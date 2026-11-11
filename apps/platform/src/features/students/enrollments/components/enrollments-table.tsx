@@ -151,29 +151,27 @@ function buildColumns({
     {
       id: 'totalPayments',
       header: 'Оплат',
-      accessorFn: (row) => row.wallet?.totalPayments ?? 0,
+      accessorFn: (row) => row.wallet?.totalPayments,
       size: COLUMN_WIDTH,
-      // Сортировка выключена: суммы лежат на кошельке, а его у записи может не
-      // быть — по nullable-связи Prisma расставляет строки непредсказуемо.
-      enableSorting: false,
+      cell: ({ row }) => row.original.wallet?.totalPayments ?? '—',
       meta: { title: 'Оплат', className: NUMERIC },
     },
     {
       id: 'totalLessons',
       header: 'Уроков',
-      accessorFn: (row) => row.wallet?.totalLessons ?? 0,
+      accessorFn: (row) => row.wallet?.totalLessons,
       size: COLUMN_WIDTH,
-      enableSorting: false,
+      cell: ({ row }) => row.original.wallet?.totalLessons ?? '—',
       meta: { title: 'Уроков', className: NUMERIC },
     },
     {
       id: 'lessonsBalance',
       header: 'Баланс уроков',
-      accessorFn: (row) => row.wallet?.lessonsBalance ?? 0,
+      accessorFn: (row) => row.wallet?.lessonsBalance,
       size: COLUMN_WIDTH,
-      enableSorting: false,
       cell: ({ row }) => {
-        const balance = row.original.wallet?.lessonsBalance ?? 0
+        const balance = row.original.wallet?.lessonsBalance
+        if (balance === undefined) return '—'
         return (
           <span className={balance < LOW_BALANCE ? 'text-destructive' : undefined}>{balance}</span>
         )
