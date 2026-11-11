@@ -8,7 +8,7 @@ const statement = {
   lesson: ['create', 'readSelf', 'readAll', 'update', 'delete'],
   student: ['create', 'read', 'update', 'delete'],
   payment: ['create', 'read', 'update', 'delete'],
-  paycheck: ['create', 'read', 'update', 'delete'],
+  paycheck: ['create', 'createSelf', 'read', 'update', 'delete'],
   salary: ['readSelf', 'readAll'],
   managerSalary: ['create', 'read', 'update', 'delete'],
 
@@ -32,7 +32,7 @@ const teacher = ac.newRole({
   lesson: ['readSelf'],
   student: ['read'],
   payment: ['read'],
-  paycheck: ['read'],
+  paycheck: ['read', 'createSelf'],
   salary: ['readSelf'],
   managerSalary: ['read'],
 
@@ -144,5 +144,23 @@ export function checkPermission(
 }
 
 const organizationPermissions = { ac, roles: { owner, manager, teacher } }
+
+export function canCreatePaycheck(
+  session: {
+    user: { id: string }
+    memberRole?: string | null
+    permissions?: OrganizationPermissionCheck
+  } | null | undefined,
+  userId: number,
+): boolean {
+  if (!session) return false
+  const isSelf = Number(session.user.id) === userId
+  if (!isSelf && session.memberRole === 'teacher') return false
+
+  return (
+    checkPermission(session.permissions, { paycheck: ['create'] }) ||
+    (isSelf && checkPermission(session.permissions, { paycheck: ['createSelf'] }))
+  )
+}
 
 export default organizationPermissions

@@ -3,6 +3,7 @@
 import { auth } from '@/src/lib/auth/server'
 import { prisma } from '@repo/db'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/src/lib/error'
+import { canCreatePaycheck } from '@/src/lib/permissions/organization'
 import { authAction, hasPermission, permissionAction } from '@/src/lib/safe-action'
 import { headers } from 'next/headers'
 import { z } from 'zod'
@@ -161,12 +162,16 @@ export const getPaychecksByUser = authAction
     })
   })
 
-export const createPaycheck = permissionAction({ paycheck: ['create'] })
+export const createPaycheck = authAction
   .metadata({ actionName: 'createPaycheck' })
   .inputSchema(CreatePaycheckWithUserSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { userId, ...data } = parsedInput
     const organizationId = ctx.session.organizationId!
+
+    if (!canCreatePaycheck(ctx.session, userId)) {
+      throw new ForbiddenError('Недостаточно прав для создания чека')
+    }
 
     // `userId` приходит с клиента: без проверки чек ложился бы в эту школу
     // на любого пользователя платформы.
