@@ -1,5 +1,6 @@
 'use server'
 
+import { financialTransaction } from '@/src/features/finances/transaction.server'
 import { Prisma } from '@repo/db'
 import { AttendanceStatus, CoinTxReason } from '@repo/db/enums'
 import { prisma } from '@repo/db'
@@ -139,7 +140,7 @@ export const cancelLesson = permissionAction({ lesson: ['update'] })
   .metadata({ actionName: 'cancelLesson' })
   .inputSchema(CancelLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction((tx) =>
+    await financialTransaction((tx) =>
       setLessonStatusTx(tx, {
         organizationId: ctx.session.organizationId!,
         lessonId: parsedInput.id,
@@ -156,7 +157,7 @@ export const restoreLesson = permissionAction({ lesson: ['update'] })
   .metadata({ actionName: 'restoreLesson' })
   .inputSchema(RestoreLessonSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction((tx) =>
+    await financialTransaction((tx) =>
       setLessonStatusTx(tx, {
         organizationId: ctx.session.organizationId!,
         lessonId: parsedInput.id,
@@ -288,49 +289,49 @@ export const updateAttendanceStatus = permissionAction(MARK_ATTENDANCE_PERMISSIO
   .action(async ({ ctx, parsedInput }) => {
     const { studentId, lessonId, status, isWarned } = parsedInput
 
-    const lesson = await prisma.lesson.findUnique({
-      where: { id: lessonId },
-      select: { status: true },
-    })
-    if (lesson?.status === 'CANCELLED') {
-      throw new ConflictError('Нельзя изменить посещаемость отменённого урока')
-    }
+    await financialTransaction(async (tx) => {
+      const lesson = await tx.lesson.findUnique({
+        where: { id: lessonId },
+        select: { status: true },
+      })
+      if (lesson?.status === 'CANCELLED') {
+        throw new ConflictError('Нельзя изменить посещаемость отменённого урока')
+      }
 
-    const oldAttendance = await prisma.attendance.findFirst({
-      where: { studentId, lessonId, organizationId: ctx.session.organizationId! },
-      include: {
-        lesson: {
-          include: {
-            group: {
-              include: {
-                course: true,
-                location: true,
-                schedules: true,
+      const oldAttendance = await tx.attendance.findFirst({
+        where: { studentId, lessonId, organizationId: ctx.session.organizationId! },
+        include: {
+          lesson: {
+            include: {
+              group: {
+                include: {
+                  course: true,
+                  location: true,
+                  schedules: true,
+                },
               },
             },
           },
+          makeupForAttendance: {
+            include: { lesson: true },
+          },
+          makeupAttendance: { select: { id: true } },
         },
-        makeupForAttendance: {
-          include: { lesson: true },
-        },
-        makeupAttendance: { select: { id: true } },
-      },
-    })
+      })
 
-    if (!oldAttendance) throw new NotFoundError('Запись посещаемости не найдена')
+      if (!oldAttendance) throw new NotFoundError('Запись посещаемости не найдена')
 
-    // Отработка уже назначена: сменить статус оригинала — значит оставить её
-    // висеть за занятием, на котором ученик был. Сначала отменяют отработку.
-    if (oldAttendance.makeupAttendance) {
-      throw new ConflictError('Ученик записан на отработку — статус пропуска не меняется')
-    }
+      // Отработка уже назначена: сменить статус оригинала — значит оставить её
+      // висеть за занятием, на котором ученик был. Сначала отменяют отработку.
+      if (oldAttendance.makeupAttendance) {
+        throw new ConflictError('Ученик записан на отработку — статус пропуска не меняется')
+      }
 
-    // Предупреждения на отработке не существует: попытка одна, и её пропуск платный
-    // в любом случае. Флаг гасим здесь, а не только в интерфейсе, — иначе «возможность
-    // указать» остаётся у любого, кто дойдёт до экшена мимо кнопок.
-    const nextIsWarned = oldAttendance.makeupForAttendanceId === null ? isWarned : null
+      // Предупреждения на отработке не существует: попытка одна, и её пропуск платный
+      // в любом случае. Флаг гасим здесь, а не только в интерфейсе, — иначе «возможность
+      // указать» остаётся у любого, кто дойдёт до экшена мимо кнопок.
+      const nextIsWarned = oldAttendance.makeupForAttendanceId === null ? isWarned : null
 
-    await prisma.$transaction(async (tx) => {
       // Статус переставляем первым: денежные функции ниже читают строку уже в
       // новом виде и сами решают, чем она расплатилась.
       await tx.attendance.update({
@@ -408,7 +409,7 @@ export const updateAttendanceTrialStatus = permissionAction(MANAGE_ATTENDANCE_PE
   .metadata({ actionName: 'updateAttendanceTrialStatus' })
   .inputSchema(UpdateAttendanceTrialStatusSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const attendance = await tx.attendance.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
         select: { id: true, studentId: true, isTrial: true, walletId: true },
@@ -490,7 +491,7 @@ export const deleteAttendance = permissionAction(DELETE_ATTENDANCE_PERMISSION)
       throw new ConflictError('Нельзя удалить ученика из отменённого урока')
     }
 
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const attendance = await tx.attendance.findFirst({
         where: {
           studentId: parsedInput.studentId,
@@ -516,7 +517,7 @@ export const deleteAttendanceById = permissionAction(DELETE_ATTENDANCE_PERMISSIO
   .metadata({ actionName: 'deleteAttendanceById' })
   .inputSchema(DeleteAttendanceByIdSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const attendance = await tx.attendance.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
         select: { id: true },
@@ -539,7 +540,7 @@ export const createMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'createMakeup' })
   .inputSchema(CreateMakeupSchema)
   .action(async ({ ctx, parsedInput }) =>
-    prisma.$transaction((tx) =>
+    financialTransaction((tx) =>
       createMakeupTx(tx, {
         organizationId: ctx.session.organizationId!,
         sourceAttendanceId: parsedInput.attendanceId,
@@ -556,7 +557,7 @@ export const rescheduleMakeup = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
   .metadata({ actionName: 'rescheduleMakeup' })
   .inputSchema(RescheduleMakeupSchema)
   .action(async ({ ctx, parsedInput }) =>
-    prisma.$transaction((tx) =>
+    financialTransaction((tx) =>
       rescheduleMakeupTx(tx, {
         organizationId: ctx.session.organizationId!,
         sourceAttendanceId: parsedInput.attendanceId,

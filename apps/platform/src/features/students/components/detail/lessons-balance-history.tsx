@@ -1,4 +1,5 @@
 'use client'
+import { displayPackageName } from '@/src/features/finances/package-name'
 import {
   AttendanceStatus,
   StudentFinancialField,
@@ -83,7 +84,7 @@ const reasonLabel: Record<StudentLessonsBalanceChangeReason, string> = {
   WALLET_TRANSFER: 'Перевод между кошельками',
   LESSON_CANCELLED: 'Отмена урока',
   PACKAGE_CORRECTED: 'Исправление пакета',
-  LESSONS_GIFTED: 'Подарок уроков',
+  LESSONS_GIFTED: 'Ручное начисление уроков',
   GROUP_WALLET_CHANGED: 'Перепривязка группы',
 }
 
@@ -161,7 +162,7 @@ function getMetaDetails(
         const sign = c.pastRevenueDelta > 0 ? '+' : '−'
         parts.push(`прошлые месяцы ${sign}${Math.abs(c.pastRevenueDelta)} ₽`)
       }
-      if (c.productName) parts.push(c.productName)
+      if (c.productName) parts.push(displayPackageName(c.productName))
       return <span className="text-muted-foreground text-sm">{parts.join(' · ')}</span>
     }
 
@@ -172,7 +173,7 @@ function getMetaDetails(
       const parts: string[] = []
       if (paymentMeta.lessonCount) parts.push(`${paymentMeta.lessonCount} ур.`)
       if (paymentMeta.price) parts.push(`${paymentMeta.price} ₽`)
-      if (paymentMeta.productName) parts.push(paymentMeta.productName)
+      if (paymentMeta.productName) parts.push(displayPackageName(paymentMeta.productName))
       return parts.length > 0 ? (
         <span className="text-muted-foreground text-sm">{parts.join(' · ')}</span>
       ) : null
@@ -235,7 +236,7 @@ function getMetaDetails(
       // ученика целиком, без колонки кошелька, и без этого пара строк переноса
       // выглядит противоречиво — «стало 0», а следующая строка начинается с трёх.
       const what =
-        transferMeta.productName ??
+        (transferMeta.productName ? displayPackageName(transferMeta.productName) : undefined) ??
         (transferMeta.count > 1 ? `${transferMeta.count} пак.` : 'Пакет')
       const from = transferMeta.fromWalletName
       const to = transferMeta.toWalletName

@@ -25,6 +25,7 @@ export type AttendanceForStatusSwitcher = Pick<
 interface AttendanceStatusSwitcherProps {
   attendance: AttendanceForStatusSwitcher
   disabled?: boolean
+  readOnly?: boolean
 }
 
 /*
@@ -48,7 +49,11 @@ const ACTIVE_STYLE = {
   warned: 'border-warning aria-pressed:bg-warning/20 text-warning aria-pressed:hover:text-warning',
 } as const
 
-export function AttendanceStatusSwitcher({ attendance, disabled }: AttendanceStatusSwitcherProps) {
+export function AttendanceStatusSwitcher({
+  attendance,
+  disabled,
+  readOnly,
+}: AttendanceStatusSwitcherProps) {
   const { data: hasPermission } = useOrganizationPermissionQuery({
     studentLesson: ['selectWarned'],
   })
@@ -101,7 +106,7 @@ export function AttendanceStatusSwitcher({ attendance, disabled }: AttendanceSta
   // Отработка уже назначена — оригинальный пропуск заморожен: смена статуса
   // оставила бы отработку висеть за занятием, на котором ученик был. Сервер
   // это тоже проверяет (`updateAttendanceStatus`), здесь — чтобы было видно.
-  const locked = attendance.makeupAttendance !== null
+  const locked = readOnly || attendance.makeupAttendance !== null
 
   /** Колокольчик показываем только там, где предупреждение что-то решает. */
   const canWarn = status === 'ABSENT' && !isMakeup
@@ -112,7 +117,13 @@ export function AttendanceStatusSwitcher({ attendance, disabled }: AttendanceSta
           отключены указатели, и Tooltip на них не открывается. */}
       <div
         className="border-muted flex w-fit items-center gap-1.5 rounded-lg border px-1.5 py-1"
-        title={locked ? 'Ученик записан на отработку — статус не меняется' : undefined}
+        title={
+          readOnly
+            ? 'Статус посещения'
+            : locked
+              ? 'Ученик записан на отработку — статус не меняется'
+              : undefined
+        }
       >
         {/* «Предупредили» бывает только у отсутствия на обычном уроке, поэтому
             на остальных статусах и на отработке колокольчик сворачивается по

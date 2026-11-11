@@ -1,5 +1,6 @@
 'use server'
 
+import { financialTransaction } from '@/src/features/finances/transaction.server'
 import { setStudentGroupStatusTx } from '@/src/features/status-log/record.server'
 import { bucketKey } from '@/src/lib/chart-buckets'
 import { ForbiddenError } from '@/src/lib/error'
@@ -410,7 +411,7 @@ export const returnToGroup = permissionAction({ studentGroup: ['update'] })
     const { groupId, studentId } = parsedInput
     const organizationId = ctx.session.organizationId!
 
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       // Чужую запись вернуть нельзя: составной ключ глобален по схеме, и без этой
       // проверки id из другой школы прошёл бы в `update` как свой.
       await tx.studentGroup.findFirstOrThrow({

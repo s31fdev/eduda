@@ -7,6 +7,7 @@ import {
   correctPackage,
   createWallet,
   getPackageCorrectionFacts,
+  getPackageCorrectionPreview,
   getStudentWalletUnpaid,
   giftLessons,
   getStudentWallets,
@@ -227,6 +228,19 @@ export const usePackageCorrectionFactsQuery = (packageId: number | null) => {
   })
 }
 
+export const usePackageCorrectionPreviewQuery = (
+  input: { packageId: number; lessonCount: number; remaining?: number; price: number } | null,
+) =>
+  useQuery({
+    queryKey: [...walletKeys.all, 'correction-preview', input] as const,
+    enabled: input !== null,
+    queryFn: async () => {
+      const { data, serverError } = await getPackageCorrectionPreview(input!)
+      if (!data) throw new Error(serverError ?? 'Не удалось рассчитать исправление')
+      return data
+    },
+  })
+
 /**
  * Правка и подарок меняют то же, что перенос: кошельки, карточку ученика, его
  * историю и список пакетов.
@@ -249,7 +263,7 @@ export const useCorrectPackageMutation = (studentId: number) => {
       const { data, serverError } = await correctPackage(values)
       // Отказ ядра («потрачено уже 3 — меньше нельзя») — это ответ человеку, а не
       // сбой: строкой из `handleServerError` он и доезжает до тоста.
-      if (serverError) throw new Error(serverError)
+      if (!data) throw new Error(serverError ?? 'Не удалось исправить пакет')
       return data
     },
     onSuccess: (data) => {
@@ -275,9 +289,11 @@ export const useGiftLessonsMutation = (studentId: number) => {
     onSuccess: (data) => {
       invalidateAfterPackageEdit(queryClient, studentId)
       const settled = data?.settled ?? 0
-      toast.success(settled > 0 ? `Уроки подарены. Закрыто занятий: ${settled}` : 'Уроки подарены')
+      toast.success(
+        settled > 0 ? `Уроки начислены. Закрыто занятий: ${settled}` : 'Уроки начислены',
+      )
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Не удалось подарить уроки'),
+      toast.error(error instanceof Error ? error.message : 'Не удалось начислить уроки'),
   })
 }

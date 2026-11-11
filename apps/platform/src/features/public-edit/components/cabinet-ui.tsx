@@ -129,18 +129,30 @@ export function aheadChip(lesson: CabinetLesson): ChipKind | null {
 }
 
 /** `className` перекрашивает бейдж под цветной фон: цвет статуса там не читается. */
-export function StateChip({ kind, className }: { kind: ChipKind; className?: string }) {
+export function StateChip({
+  kind,
+  className,
+  iconOnly,
+}: {
+  kind: ChipKind
+  className?: string
+  iconOnly?: boolean
+}) {
   const chip = CHIPS[kind]
   return (
     <span
+      title={iconOnly ? chip.label : undefined}
+      role={iconOnly ? 'img' : undefined}
+      aria-label={iconOnly ? chip.label : undefined}
       className={cn(
         'inline-flex h-6.5 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold',
         chip.className,
+        iconOnly && 'w-6.5 justify-center px-0',
         className,
       )}
     >
       <chip.icon className="size-3.5" strokeWidth={2.5} />
-      {chip.label}
+      {!iconOnly && chip.label}
     </span>
   )
 }

@@ -1,5 +1,6 @@
 'use server'
 
+import { visibleWalletPackages } from '@/src/features/wallets/package-visibility'
 import { Prisma } from '@repo/db'
 import { CoinTxReason } from '@repo/db/enums'
 
@@ -319,7 +320,7 @@ export const getStudentDetail = authAction
             // Отменённые и неоплаченные не грузим — первые уже сняты с баланса,
             // вторые уроков ещё не дали.
             packages: {
-              where: { status: 'ACTIVE' },
+              where: { status: 'ACTIVE', ...visibleWalletPackages },
               orderBy: [{ date: 'desc' }, { id: 'desc' }],
             },
           },

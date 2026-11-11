@@ -28,18 +28,23 @@ export const MOVE_MONEY_PERMISSION = {
   wallet: ['update'],
 } as const satisfies OrganizationPermissionCheck
 
-/** Причина правки. Обязательна: через месяц её прочитают в истории ученика. */
+/** Обязательная причина выдачи подарка. */
 const ReasonSchema = z
   .string('Напишите причину')
   .trim()
   .min(3, 'Напишите причину')
   .max(500, 'Слишком длинно')
 
-export const CorrectPackageSchema = z.object({
+export const PackageCorrectionPreviewSchema = z.object({
   packageId: z.number().int().positive(),
   lessonCount: z.number('Укажите количество занятий').int().positive().max(500),
-  price: z.number('Укажите сумму').int().min(0),
-  comment: ReasonSchema,
+  price: z.number('Укажите сумму').int().min(0).max(2147483647),
+  remaining: z.number('Укажите остаток').int().min(0).optional(),
+})
+
+export const CorrectPackageSchema = PackageCorrectionPreviewSchema.extend({
+  snapshot: z.string().regex(/^[a-f0-9]{64}$/),
+  comment: z.string().trim().max(500, 'Слишком длинно').optional(),
 })
 
 export const GiftLessonsSchema = z.object({

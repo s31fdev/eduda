@@ -1,3 +1,4 @@
+import { displayPackageName } from '@/src/features/finances/package-name'
 import type { WalletStatus } from '@repo/db/enums'
 import { Badge } from '@repo/ui/components/badge'
 import { Progress } from '@repo/ui/components/progress'
@@ -112,7 +113,7 @@ export function WalletCard({ wallet, actions, children, className }: WalletCardP
           {wallet.packages.map((p) => (
             <div key={p.id} className="flex items-center justify-between gap-1">
               <span className="truncate">
-                {p.productName || `Оплата от ${formatDateOnly(p.date)}`}
+                {displayPackageName(p.productName) || `Оплата от ${formatDateOnly(p.date)}`}
               </span>
               <span className="shrink-0 tabular-nums">
                 {p.remaining} из {p.lessonCount} ур.

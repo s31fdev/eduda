@@ -824,7 +824,7 @@ async function main() {
           )
           ok('перенос без отработки — отказ')
 
-          // ─── Правило: тот же курс или тот же преподаватель группы ───
+          // ─── В кабинете действует ограничение по курсу или преподавателю ───
           const courseTwo = await tx.course.create({
             data: { organizationId, name: 'Другой курс' },
             select: { id: true },
@@ -891,11 +891,13 @@ async function main() {
               scope,
             })
 
-          await bookFor(await lessonIn(colleague))
+          await bookFor(await lessonIn(colleague), { sameLocation: true })
           ok('по общему преподавателю подходит и группа другого курса')
 
-          await assert.rejects(bookFor(await lessonIn(stranger)), refused(/не подходит/))
-          ok('другой курс у другого преподавателя не подходит')
+          const unrelated = await lessonIn(stranger)
+          await assert.rejects(bookFor(unrelated, { sameLocation: true }), refused(/не подходит/))
+          await bookFor(unrelated)
+          ok('другой курс без общего преподавателя: родителю отказ, менеджеру можно')
 
           const far = await lessonIn(faraway)
           await assert.rejects(bookFor(far, { sameLocation: true }), refused(/не подходит/))

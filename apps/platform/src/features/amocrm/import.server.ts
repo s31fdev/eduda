@@ -15,12 +15,13 @@
  * ждёт готовая форма. Догадки здесь неуместны: цена ошибки — деньги в чужом
  * кошельке.
  */
+import { financialTransaction } from '../finances/transaction.server'
 import {
   createPaymentWithPackageTx,
   PAYMENT_TX_OPTIONS,
 } from '@/src/features/finances/payments/create.server'
 import { formatInTz } from '@/src/lib/timezone'
-import { Prisma, prisma } from '@repo/db'
+import { Prisma } from '@repo/db'
 import type { PaidInvoice } from './poll'
 
 type PlannedPackage = {
@@ -264,7 +265,7 @@ export async function importPaidInvoice(
   invoice: PaidInvoice,
   args: { organizationId: number; tz: string; dryRun?: boolean },
 ): Promise<ImportOutcome> {
-  return await prisma.$transaction(async (tx): Promise<ImportOutcome> => {
+  return await financialTransaction(async (tx): Promise<ImportOutcome> => {
     if (await alreadyHandledTx(tx, { ...args, invoiceId: invoice.invoiceId })) {
       return { status: 'skipped', invoiceId: invoice.invoiceId }
     }

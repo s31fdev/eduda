@@ -1,5 +1,6 @@
 'use client'
 
+import { displayPackageName } from '@/src/features/finances/package-name'
 import { Collapsible, CollapsibleTrigger } from '@repo/ui/components/collapsible'
 import { Skeleton } from '@repo/ui/components/skeleton'
 import { ChevronDown, Info } from 'lucide-react'
@@ -162,7 +163,7 @@ function PackageRow({
   today: string
 }) {
   const title =
-    pkg.productName ||
+    displayPackageName(pkg.productName) ||
     (pkg.lessonCount > 0
       ? `Абонемент на ${pkg.lessonCount} ${lessonsWord(pkg.lessonCount)}`
       : 'Оплата')

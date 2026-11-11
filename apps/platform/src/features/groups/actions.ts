@@ -1,5 +1,6 @@
 'use server'
 
+import { financialTransaction } from '@/src/features/finances/transaction.server'
 import { Prisma, prisma } from '@repo/db'
 import { unchargeAttendancesTx } from '@/src/features/finances/ledger.server'
 import { ConflictError } from '@/src/lib/error'
@@ -384,7 +385,7 @@ export const deleteGroup = authAction
   .inputSchema(DeleteGroupSchema)
   .action(async ({ ctx, parsedInput }) => {
     const organizationId = ctx.session.organizationId!
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       // Группа уносит каскадом уроки, а те — посещаемость. Списания снимаем до
       // удаления: иначе они останутся в журнале деньгами без занятия, а уроки —
       // потраченными с балансов учеников, которые в этой группе уже не числятся.
@@ -407,7 +408,7 @@ export const archiveGroup = authAction
   .action(async ({ ctx, parsedInput }) => {
     const { groupId, statusChangedAt, comment, deleteFutureLessons } = parsedInput
     const statusChangedAtYmd = statusChangedAt ?? todayYmdInTz(ctx.tz)
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       await tx.group.update({
         where: { id: groupId, organizationId: ctx.session.organizationId! },
         data: {
@@ -451,7 +452,7 @@ export const completeGroup = authAction
   .action(async ({ ctx, parsedInput }) => {
     const { groupId, statusChangedAt, comment, deleteFutureLessons } = parsedInput
     const statusChangedAtYmd = statusChangedAt ?? todayYmdInTz(ctx.tz)
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       await tx.group.update({
         where: { id: groupId, organizationId: ctx.session.organizationId! },
         data: {
@@ -515,7 +516,7 @@ export const updateScheduleAndRegenerateLessons = authAction
     const orgId = ctx.session.organizationId!
     const { groupId, schedule, startDate, lessonCount } = parsedInput
 
-    return await prisma.$transaction(async (tx) => {
+    return await financialTransaction(async (tx) => {
       // 1. Verify ownership
       await tx.group.findFirstOrThrow({ where: { id: groupId, organizationId: orgId } })
 
@@ -737,7 +738,7 @@ export const addStudentToGroup = authAction
     const orgId = ctx.session.organizationId!
     const { groupId, studentId, walletId, isApplyToLesson, newWalletName } = parsedInput
 
-    return await prisma.$transaction(async (tx) => {
+    return await financialTransaction(async (tx) => {
       // Запись уже есть (отчислен, переведён, закрыт с группой) — это не зачисление, а
       // возврат, и он живёт в карточке ученика. Без проверки дверь журнала молча
       // переписала бы запись вместо прежнего отказа по первичному ключу.
@@ -799,7 +800,7 @@ export const removeStudentFromGroup = authAction
   .inputSchema(DeleteStudentGroupSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { studentId, groupId } = parsedInput
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       // Verify org ownership
       await tx.group.findFirstOrThrow({
         where: { id: groupId, organizationId: ctx.session.organizationId! },
@@ -834,7 +835,7 @@ export const dismissStudentFromGroup = authAction
   .inputSchema(DismissStudentSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { studentId, groupId, statusChangedAt, comment } = parsedInput
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       // Verify org ownership
       await tx.group.findFirstOrThrow({
         where: { id: groupId, organizationId: ctx.session.organizationId! },
@@ -875,7 +876,7 @@ export const transferStudent = authAction
     const orgId = ctx.session.organizationId!
     const { studentId, oldGroupId, newGroupId } = parsedInput
 
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const oldSg = await tx.studentGroup.findUniqueOrThrow({
         where: { studentId_groupId: { studentId, groupId: oldGroupId } },
       })

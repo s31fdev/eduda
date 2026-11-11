@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { Prisma } from '@repo/db'
 import {
   StudentFinancialField,
@@ -5,13 +6,20 @@ import {
   WalletEntryKind,
 } from '@repo/db/enums'
 // Относительные пути, а не алиасы: этот модуль запускают скрипты через tsx.
-import { type CorrectionFacts, planPackageCorrection } from './correction'
+import {
+  type CorrectionFacts,
+  type CorrectionInput,
+  LEGACY_LESSON_PACKAGE_NAME,
+  planPackageCorrection,
+} from './correction'
 import {
   activatePackageTx,
   recordWalletEntryTx,
   settleUnpaidAttendancesTx,
+  unpaidAttendancesOfWalletTx,
   writeFinancialHistoryTx,
 } from './ledger.server'
+import { isLegacyManualLessonPackageName, MANUAL_LESSON_PACKAGE_NAME } from './package-name'
 import { ConflictError, NotFoundError } from '../../lib/error'
 
 /**
@@ -24,13 +32,10 @@ import { ConflictError, NotFoundError } from '../../lib/error'
  * уроков нечем оценить. Есть «в пакете на самом деле девять занятий» и «дарим два
  * урока» — у каждой из них смысл для денег определён.
  *
- * Причина обязательна и пишется и в журнал, и в историю: правка — это решение
+ * Комментарий, если указан, пишется и в журнал, и в историю: правка — это решение
  * менеджера, и через месяц на вопрос «почему у ученика стало на восемь уроков
  * больше» должен отвечать экран истории, а не память.
  */
-
-/** Подпись подарочного пакета. Снимок, как у проданного: по нему пакет и узнают. */
-export const GIFT_PRODUCT_NAME = 'Подарок'
 
 /**
  * Что нужно знать о пакете, чтобы его исправить, — для окна и для самой правки.
@@ -48,6 +53,8 @@ export async function readCorrectionFactsTx(
     where: { id: args.packageId, organizationId: args.organizationId },
     select: {
       id: true,
+      organizationId: true,
+      updatedAt: true,
       status: true,
       lessonCount: true,
       remaining: true,
@@ -57,17 +64,28 @@ export async function readCorrectionFactsTx(
       studentId: true,
       productName: true,
       paymentId: true,
-      payment: { select: { externalId: true } },
-      wallet: { select: { status: true } },
+      payment: { select: { externalId: true, price: true, status: true } },
+      wallet: { select: { status: true, lessonsBalance: true } },
     },
   })
   if (!packet) return null
 
   const [charged, gift] = await Promise.all([
-    tx.attendance.aggregate({
-      where: { packageId: packet.id, organizationId: args.organizationId },
-      _count: { _all: true },
-      _sum: { price: true },
+    tx.attendance.findMany({
+      where: { packageId: packet.id, organizationId: args.organizationId, price: { not: null } },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        price: true,
+        amount: true,
+        status: true,
+        studentId: true,
+        lessonId: true,
+        isWarned: true,
+        makeupForAttendanceId: true,
+        makeupAttendance: { select: { id: true } },
+        lesson: { select: { date: true, status: true } },
+      },
     }),
     // Подарок — по событию выдачи, а не по нулевой цене: нулевая цена бывает и
     // у пакетов перехода, которые подарком не являются.
@@ -80,6 +98,23 @@ export async function readCorrectionFactsTx(
       select: { id: true },
     }),
   ])
+  const charges = await tx.walletEntry.findMany({
+    where: {
+      organizationId: args.organizationId,
+      kind: WalletEntryKind.CHARGE,
+      reversedBy: { is: null },
+      attendanceId: { in: charged.map((row) => row.id) },
+    },
+    orderBy: { id: 'asc' },
+    select: {
+      id: true,
+      attendanceId: true,
+      quantity: true,
+      unitPrice: true,
+      walletId: true,
+      effectiveAt: true,
+    },
+  })
 
   const facts: CorrectionFacts = {
     status: packet.status,
@@ -88,13 +123,93 @@ export async function readCorrectionFactsTx(
     price: packet.price,
     unitPrice: packet.unitPrice,
     hasPayment: packet.paymentId !== null,
-    isGift: gift !== null,
+    isLegacy: packet.productName === LEGACY_LESSON_PACKAGE_NAME,
+    isGift:
+      gift !== null ||
+      (packet.paymentId === null && isLegacyManualLessonPackageName(packet.productName)),
     fromCrm: packet.payment?.externalId != null,
-    chargedCount: charged._count._all,
-    chargedMoney: charged._sum.price ?? 0,
+    chargedCount: charged.length,
+    chargedMoney: charged.reduce((sum, row) => sum + (row.price ?? 0) * row.amount, 0),
+    chargedLessons: charged.reduce((sum, row) => sum + row.amount, 0),
+    returnableLessons: charges.reduce((sum, row) => sum - row.quantity, 0),
+    paymentStatus: packet.payment?.status,
   }
 
-  return { packet, facts }
+  return { packet, facts, charged, charges }
+}
+
+async function buildCorrectionPreviewTx(
+  tx: Prisma.TransactionClient,
+  read: NonNullable<Awaited<ReturnType<typeof readCorrectionFactsTx>>>,
+  input: CorrectionInput,
+) {
+  const { packet, facts } = read
+  if (packet.wallet.status !== 'ACTIVE') return { error: 'Кошелёк архивирован' } as const
+  if (input.remaining === undefined) return { error: 'Укажите остаток пакета' } as const
+  const result = planPackageCorrection(facts, input)
+  if (!result.plan) return { error: result.error } as const
+  const { plan } = result
+  const paymentAfter = packet.payment ? packet.payment.price + plan.priceDelta : null
+  if (
+    paymentAfter !== null &&
+    plan.priceDelta !== 0 &&
+    (paymentAfter < 0 || paymentAfter > 2147483647)
+  ) {
+    return { error: 'Сумма счёта выходит за допустимый диапазон' } as const
+  }
+  const beforeSettlement = packet.wallet.lessonsBalance + plan.lessonDelta
+  const assignments: { attendanceId: number; packageId: number; unitPrice: number }[] = []
+  if (plan.lessonDelta > 0 && beforeSettlement > 0) {
+    const [unpaid, queue] = await Promise.all([
+      unpaidAttendancesOfWalletTx(tx, {
+        organizationId: packet.organizationId,
+        walletId: packet.walletId,
+        take: beforeSettlement,
+      }),
+      tx.package.findMany({
+        where: {
+          walletId: packet.walletId,
+          status: 'ACTIVE',
+          OR: [{ remaining: { gt: 0 } }, { id: packet.id }],
+        },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
+        select: { id: true, remaining: true, unitPrice: true },
+      }),
+    ])
+    let index = 0
+    for (const item of queue) {
+      const remaining = item.id === packet.id ? plan.remaining : item.remaining
+      const unitPrice = item.id === packet.id ? plan.unitPrice : item.unitPrice
+      for (const row of unpaid.slice(index, index + remaining)) {
+        assignments.push({ attendanceId: row.id, packageId: item.id, unitPrice })
+      }
+      index += remaining
+      if (index >= unpaid.length) break
+    }
+  }
+  const snapshot = createHash('sha256')
+    .update(JSON.stringify({ read, plan, assignments }))
+    .digest('hex')
+  return {
+    plan,
+    snapshot,
+    settled: assignments.length,
+    remainingAfter:
+      plan.remaining - assignments.filter((row) => row.packageId === packet.id).length,
+    walletBefore: packet.wallet.lessonsBalance,
+    walletAfter: beforeSettlement - assignments.length,
+    paymentBefore: packet.payment?.price ?? null,
+    paymentAfter,
+  }
+}
+
+export async function previewPackageCorrectionTx(
+  tx: Prisma.TransactionClient,
+  args: CorrectionInput & { packageId: number; organizationId: number },
+) {
+  const read = await readCorrectionFactsTx(tx, args)
+  if (!read) throw new NotFoundError('Пакет не найден')
+  return buildCorrectionPreviewTx(tx, read, args)
 }
 
 /**
@@ -186,8 +301,10 @@ export async function correctPackageTx(
     packageId: number
     organizationId: number
     lessonCount: number
+    remaining?: number
+    snapshot?: string
     price: number
-    comment: string
+    comment?: string
     actorUserId: number | null
     /** День правки: это новое событие, а не переписывание продажи. */
     effectiveAt: string
@@ -201,8 +318,24 @@ export async function correctPackageTx(
   // архивный кошелёк, никуда бы не списывались.
   if (packet.wallet.status !== 'ACTIVE') throw new ConflictError('Кошелёк архивирован')
 
-  const { plan, error } = planPackageCorrection(facts, args)
-  if (error !== undefined) throw new ConflictError(error)
+  if (args.snapshot !== undefined && args.remaining === undefined) {
+    throw new ConflictError('Укажите остаток пакета')
+  }
+
+  const result =
+    args.snapshot === undefined
+      ? planPackageCorrection(facts, args)
+      : await buildCorrectionPreviewTx(tx, read, args)
+  if (
+    args.snapshot !== undefined &&
+    (!('snapshot' in result) || args.snapshot !== result.snapshot)
+  ) {
+    throw new ConflictError(
+      'Данные изменились. Проверьте обновлённый расчёт и подтвердите исправление.',
+    )
+  }
+  if (!result.plan) throw new ConflictError(result.error)
+  const { plan } = result
 
   // Условный апдейт, как у переноса: если пакет успели списать, перенести или
   // исправить после того, как мы его прочитали, план посчитан по устаревшему
@@ -227,18 +360,20 @@ export async function correctPackageTx(
     throw new ConflictError('Пакет изменился, пока шла правка — обновите страницу')
   }
 
-  const repriced = await repriceChargedTx(tx, {
-    packageId: packet.id,
-    organizationId: args.organizationId,
-    unitPrice: plan.unitPrice,
-    actorUserId: args.actorUserId,
-  })
+  const repriced = plan.reprice
+    ? await repriceChargedTx(tx, {
+        packageId: packet.id,
+        organizationId: args.organizationId,
+        unitPrice: plan.unitPrice,
+        actorUserId: args.actorUserId,
+      })
+    : 0
 
   // Счёт — это сумма его пакетов. Сдвигаем на разницу, а не ставим цену пакета:
   // один счёт бывает закрывает пакеты двоих детей.
   if (plan.priceDelta !== 0 && packet.paymentId !== null) {
     await tx.payment.update({
-      where: { id: packet.paymentId },
+      where: { id: packet.paymentId, status: 'ACTIVE' },
       data: { price: { increment: plan.priceDelta } },
     })
   }
@@ -256,7 +391,7 @@ export async function correctPackageTx(
     effectiveAt: args.effectiveAt,
     packageId: packet.id,
     actorUserId: args.actorUserId,
-    comment: `Исправление пакета: ${args.comment}`,
+    comment: args.comment ? `Исправление пакета: ${args.comment}` : 'Исправление пакета',
   })
 
   const wallet = await tx.wallet.findUniqueOrThrow({
@@ -274,7 +409,7 @@ export async function correctPackageTx(
     where: { id: packet.walletId },
     data: {
       lessonsBalance: { increment: plan.lessonDelta },
-      totalLessons: shift(plan.lessonDelta, wallet.totalLessons),
+      totalLessons: shift(plan.sizeDelta, wallet.totalLessons),
       totalPayments: shift(plan.priceDelta, wallet.totalPayments),
     },
     select: { lessonsBalance: true, totalLessons: true, totalPayments: true },
@@ -283,6 +418,8 @@ export async function correctPackageTx(
   const meta = {
     packageId: packet.id,
     productName: packet.productName || undefined,
+    remainingBefore: packet.remaining,
+    remainingAfter: plan.remaining,
     lessonCountBefore: packet.lessonCount,
     lessonCountAfter: plan.lessonCount,
     priceBefore: packet.price,
@@ -308,7 +445,7 @@ export async function correctPackageTx(
       delta: updated[key] - wallet[key],
       balanceBefore: wallet[key],
       balanceAfter: updated[key],
-      comment: args.comment,
+      comment: args.comment || null,
       meta,
       // Строка баланса — всегда, даже без сдвига уроков: иначе правка одной суммы
       // на кошельке с нулевым счётчиком оплат не оставила бы в истории ученика
@@ -375,7 +512,7 @@ export async function giftLessonsTx(
       remaining: args.lessonCount,
       price: 0,
       unitPrice: 0,
-      productName: GIFT_PRODUCT_NAME,
+      productName: MANUAL_LESSON_PACKAGE_NAME,
     },
   })
 

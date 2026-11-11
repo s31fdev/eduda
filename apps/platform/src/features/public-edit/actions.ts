@@ -1,5 +1,7 @@
 'use server'
 
+import { visibleWalletPackages } from '@/src/features/wallets/package-visibility'
+import { financialTransaction } from '@/src/features/finances/transaction.server'
 import { prisma } from '@repo/db'
 import { getUnpaidLessonsOfStudent } from '@/src/features/finances/unpaid.server'
 import {
@@ -371,7 +373,7 @@ export const getPublicStudentFinances = publicAction
               // Оплаты родителю показываются пакетами: сумма, дата и сколько из
               // них осталось. Отменённые не показываем — денег за ними нет.
               packages: {
-                where: { status: { not: 'CANCELLED' } },
+                where: { status: { not: 'CANCELLED' }, ...visibleWalletPackages },
                 select: {
                   id: true,
                   lessonCount: true,
@@ -573,27 +575,27 @@ export const setPublicAbsence = publicAction
     )
     await assertAbsenceEnabled(organizationId)
 
-    const attendance = await prisma.attendance.findFirst({
-      where: { studentId, lessonId: parsedInput.lessonId, organizationId },
-      select: blockableAttendanceSelect,
-    })
-    if (!attendance) throw new NotFoundError('Занятие не найдено.')
+    await financialTransaction(async (tx) => {
+      const attendance = await tx.attendance.findFirst({
+        where: { studentId, lessonId: parsedInput.lessonId, organizationId },
+        select: blockableAttendanceSelect,
+      })
+      if (!attendance) throw new NotFoundError('Занятие не найдено.')
 
-    const blocker = parentAbsenceBlocker(
-      attendance,
-      attendance.lesson,
-      schoolNow(tz),
-      parsedInput.absent ? 'mark' : 'unmark',
-    )
-    if (blocker) throw new ConflictError(blocker)
+      const blocker = parentAbsenceBlocker(
+        attendance,
+        attendance.lesson,
+        schoolNow(tz),
+        parsedInput.absent ? 'mark' : 'unmark',
+      )
+      if (blocker) throw new ConflictError(blocker)
 
-    // Кошелёк, коины и StudentLessonsBalanceHistory здесь намеренно не трогаем:
-    // isLessonCharged() ложен и для UNSPECIFIED, и для ABSENT+isWarned, поэтому
-    // переход между ними стоит ноль занятий. По той же причине сюда не зовётся
-    // `syncTrialPriceTx`: оба состояния не проведены, и нулю у пробного взяться
-    // неоткуда. Если правила списания изменятся — этот action обязан измениться
-    // вместе с ними.
-    await prisma.$transaction(async (tx) => {
+      // Кошелёк, коины и StudentLessonsBalanceHistory здесь намеренно не трогаем:
+      // isLessonCharged() ложен и для UNSPECIFIED, и для ABSENT+isWarned, поэтому
+      // переход между ними стоит ноль занятий. По той же причине сюда не зовётся
+      // `syncTrialPriceTx`: оба состояния не проведены, и нулю у пробного взяться
+      // неоткуда. Если правила списания изменятся — этот action обязан измениться
+      // вместе с ними.
       // Отработка без пропуска — сирота, поэтому снимается вместе с отметкой.
       // Предикат выше уже не пустил бы сюда чужую или отмеченную отработку.
       if (!parsedInput.absent && attendance.makeupAttendance) {
@@ -743,7 +745,7 @@ export const createPublicMakeup = publicAction
 
     // Список из UI — подсказка: урок заново проверяет `createMakeupTx` тем же
     // правилом, потому что между выбором и отправкой он мог заполниться.
-    const makeup = await prisma.$transaction((tx) =>
+    const makeup = await financialTransaction((tx) =>
       createMakeupTx(tx, {
         organizationId,
         sourceAttendanceId: parsedInput.attendanceId,
@@ -784,7 +786,7 @@ export const cancelPublicMakeup = publicAction
 
     // Сам пропуск остаётся как был — родитель отказался от даты, а не от пропуска.
     // Прогул, за который при записи вернули урок, `cancelMakeupTx` списывает снова.
-    await prisma.$transaction((tx) =>
+    await financialTransaction((tx) =>
       cancelMakeupTx(tx, {
         organizationId,
         makeupAttendanceId: makeup.id,

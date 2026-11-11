@@ -1,5 +1,6 @@
 'use client'
 
+import { displayPackageName } from '@/src/features/finances/package-name'
 import { Alert, AlertDescription, AlertTitle } from '@repo/ui/components/alert'
 import { Badge } from '@repo/ui/components/badge'
 import { Button } from '@repo/ui/components/button'
@@ -166,41 +167,42 @@ export function TransferPackagesDrawer({
                   {packages.map((p) => (
                     <label
                       key={p.id}
-                      className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
+                      className="hover:bg-muted/50 has-data-checked:border-primary/50 has-data-checked:bg-muted/50 flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors"
                     >
                       <Checkbox
                         className="mt-0.5"
                         checked={selected.includes(p.id)}
                         onCheckedChange={(val) => toggle(p.id, Boolean(val))}
                       />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium">
-                            {p.productName || 'Пакет'}
-                          </span>
-                          {p.status === 'PENDING' && (
-                            <Badge variant="outline" className="shrink-0">
-                              Ждёт оплаты
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="block truncate text-sm font-medium">
+                          {displayPackageName(p.productName) || `Пакет №${p.id}`}
+                        </span>
+                        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                           <span>{formatDateOnly(p.date)}</span>
-                          <span aria-hidden>·</span>
-                          {p.status === 'PENDING' ? (
-                            <span>
-                              {p.lessonCount} ур. за {money(p.price)}
-                            </span>
-                          ) : (
-                            <>
-                              <span className="text-foreground font-medium">
-                                осталось {p.remaining} из {p.lessonCount} ур.
-                              </span>
-                              <span aria-hidden>·</span>
-                              <span>{money(p.unitPrice)} за урок</span>
-                            </>
+                          {p.status === 'PENDING' && <Badge variant="outline">Ждёт оплаты</Badge>}
+                          {p.status === 'ACTIVE' && p.remaining === 0 && (
+                            <Badge variant="outline">Израсходован</Badge>
                           )}
                         </div>
+                      </div>
+                      <div className="ml-auto flex shrink-0 flex-col items-end gap-1">
+                        <Badge
+                          variant="secondary"
+                          className="tabular-nums"
+                          aria-label={
+                            p.status === 'PENDING'
+                              ? `В пакете ${p.lessonCount} уроков`
+                              : `Осталось ${p.remaining} из ${p.lessonCount} уроков`
+                          }
+                        >
+                          {p.status === 'PENDING'
+                            ? `${p.lessonCount} ур.`
+                            : `${p.remaining}/${p.lessonCount}`}
+                        </Badge>
+                        <span className="text-muted-foreground text-xs tabular-nums">
+                          {money(p.price)}
+                        </span>
                       </div>
                     </label>
                   ))}

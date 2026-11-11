@@ -226,7 +226,7 @@ export async function transferPackagesTx(
 
   const packages = await tx.package.findMany({
     where: { id: { in: args.packageIds }, organizationId: args.organizationId },
-    select: { id: true, walletId: true, date: true, productName: true },
+    select: { id: true, walletId: true, date: true, productName: true, status: true },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   })
   if (packages.length !== args.packageIds.length) {
@@ -304,13 +304,16 @@ export async function transferPackagesTx(
   // Гасим по балансу получателя, а не по перенесённому: у него мог быть свой остаток,
   // а больше, чем кошелёк держит, всё равно не спишется. Функция сама выходит на
   // первом несписавшемся занятии, так что запросить с запасом бесплатно.
-  const settled = await settleUnpaidAttendancesTx(tx, {
-    walletId: target.id,
-    organizationId: args.organizationId,
-    take: target.lessonsBalance,
-    actorUserId: args.actorUserId,
-    meta: { settledByTransferOf: packages.map((p) => p.id) },
-  })
+  const settled =
+    moved > 0 || packages.some((packet) => packet.status === 'PENDING')
+      ? await settleUnpaidAttendancesTx(tx, {
+          walletId: target.id,
+          organizationId: args.organizationId,
+          take: target.lessonsBalance,
+          actorUserId: args.actorUserId,
+          meta: { settledByTransferOf: packages.map((p) => p.id) },
+        })
+      : 0
 
   return { packages: packages.length, moved, settled }
 }

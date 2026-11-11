@@ -1,6 +1,7 @@
 'use server'
 
 import { prisma } from '@repo/db'
+import { visibleWalletPackages } from '@/src/features/wallets/package-visibility'
 import { authAction } from '@/src/lib/safe-action'
 import { aggregateRevenueByStudent } from '../chargeable'
 import { computeAttendanceRevenue } from '../chargeable.server'
@@ -29,7 +30,12 @@ export const getAdvancesData = authAction
     // пакеты. Невыданные (счёт не оплачен) и отменённые сюда не входят: денег
     // школе они не принесли.
     const allPackages = await prisma.package.findMany({
-      where: { organizationId, status: 'ACTIVE', createdAt: { lte: periodEnd } },
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        createdAt: { lte: periodEnd },
+        ...visibleWalletPackages,
+      },
       select: {
         id: true,
         studentId: true,

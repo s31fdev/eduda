@@ -1,5 +1,7 @@
 'use server'
 
+import { visibleWalletPackages } from '@/src/features/wallets/package-visibility'
+import { financialTransaction } from '@/src/features/finances/transaction.server'
 import { prisma } from '@repo/db'
 import {
   countUnpaidAttendancesByWallet,
@@ -7,6 +9,7 @@ import {
 } from '@/src/features/finances/ledger.server'
 import {
   correctPackageTx,
+  previewPackageCorrectionTx,
   giftLessonsTx,
   readCorrectionFactsTx,
 } from '@/src/features/finances/correction.server'
@@ -19,6 +22,7 @@ import * as z from 'zod'
 import {
   ArchiveWalletSchema,
   CorrectPackageSchema,
+  PackageCorrectionPreviewSchema,
   CreateWalletSchema,
   GiftLessonsSchema,
   LinkGroupToWalletSchema,
@@ -97,7 +101,12 @@ export const getWalletPreview = authAction
     const [unpaidCount, packages] = await Promise.all([
       countUnpaidAttendancesOfWallet({ walletId: parsedInput.walletId, organizationId }),
       prisma.package.findMany({
-        where: { walletId: parsedInput.walletId, organizationId, status: 'ACTIVE' },
+        where: {
+          walletId: parsedInput.walletId,
+          organizationId,
+          status: 'ACTIVE',
+          ...visibleWalletPackages,
+        },
         orderBy: [{ date: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
@@ -196,7 +205,7 @@ export const linkGroupToWallet = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'linkGroupToWallet' })
   .inputSchema(LinkGroupToWalletSchema)
   .action(async ({ ctx, parsedInput }) => {
-    return await prisma.$transaction(
+    return await financialTransaction(
       async (tx) =>
         await relinkGroupTx(tx, {
           studentId: parsedInput.studentId,
@@ -217,49 +226,32 @@ export const linkGroupToWallet = permissionAction(MOVE_MONEY_PERMISSION)
 export const archiveWallet = authAction
   .metadata({ actionName: 'archiveWallet' })
   .inputSchema(ArchiveWalletSchema)
-  .action(async ({ ctx, parsedInput }) => {
-    const wallet = await prisma.wallet.findUnique({
-      where: { id: parsedInput.walletId, organizationId: ctx.session.organizationId! },
-      select: { id: true, status: true },
-    })
+  .action(async ({ ctx, parsedInput }) =>
+    financialTransaction(async (tx) => {
+      const wallet = await tx.wallet.findUnique({
+        where: { id: parsedInput.walletId, organizationId: ctx.session.organizationId! },
+        select: { id: true, status: true },
+      })
 
-    if (!wallet) throw new Error('Кошелёк не найден')
-    if (wallet.status === 'ARCHIVED') {
-      throw new Error('Кошелёк уже в архиве')
-    }
+      if (!wallet) throw new Error('Кошелёк не найден')
+      if (wallet.status === 'ARCHIVED') {
+        throw new Error('Кошелёк уже в архиве')
+      }
 
-    await prisma.wallet.update({
-      where: { id: parsedInput.walletId },
-      data: { status: 'ARCHIVED', archivedAt: new Date() },
-    })
-  })
+      await tx.wallet.update({
+        where: { id: parsedInput.walletId },
+        data: { status: 'ARCHIVED', archivedAt: new Date() },
+      })
+    }),
+  )
 
 // ─── TRANSFER ────────────────────────────────────────────────────────────────
 
-/**
- * Чем кошелёк ещё может заплатить: непотраченный остаток или ждущая оплаты продажа.
- *
- * Один предикат на список и на предупреждение об осиротевших группах — иначе они
- * разъезжаются: список прячет выработанные пакеты, а счёт «что осталось» их считает,
- * и предупреждение молчит там, где кошелёк на самом деле опустел.
- */
-const TRANSFERABLE_PACKAGE_WHERE = {
+const PACKAGE_CAN_FUND_LESSONS_WHERE = {
   OR: [{ status: 'PENDING' as const }, { status: 'ACTIVE' as const, remaining: { gt: 0 } }],
 }
 
-/**
- * Пакеты кошелька, которые есть смысл переносить: с непотраченным остатком и ещё
- * не оплаченные.
- *
- * Полностью выработанный пакет ядро перенести умеет (владелец меняется, баланс
- * стоит), но предлагать это в списке незачем: уроки по нему уже отходили, а цена
- * списаний заморожена в проводках. Пользы ноль, а список у школы со стажем
- * распухает на десятки строк — на скриншоте из-за них не помещалось ничего.
- *
- * Отдельным экшеном, а не полем в `getWalletPreview`: тот намеренно показывает
- * только выданные («неоплаченные уроков не дали») и его читает форма оплаты —
- * менять там смысл ради формы переноса нельзя.
- */
+/** Включает израсходованные пакеты, чтобы их можно было собрать в одном кошельке. */
 export const getTransferablePackages = authAction
   .metadata({ actionName: 'getTransferablePackages' })
   .inputSchema(WalletPackagesSchema)
@@ -268,7 +260,8 @@ export const getTransferablePackages = authAction
       where: {
         walletId: parsedInput.walletId,
         organizationId: ctx.session.organizationId!,
-        ...TRANSFERABLE_PACKAGE_WHERE,
+        status: { in: ['PENDING', 'ACTIVE'] },
+        ...visibleWalletPackages,
       },
       orderBy: [{ date: 'asc' }, { id: 'asc' }],
       select: {
@@ -316,7 +309,7 @@ export const getTransferPreview = permissionAction(MOVE_MONEY_PERMISSION)
 
     const [earliest, headOfTarget, leftOnSource, groupsLeft] = await Promise.all([
       prisma.package.findFirst({
-        where: { id: { in: packageIds }, organizationId, status: 'ACTIVE' },
+        where: { id: { in: packageIds }, organizationId, status: 'ACTIVE', remaining: { gt: 0 } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { date: true, remaining: true, unitPrice: true },
       }),
@@ -329,7 +322,7 @@ export const getTransferPreview = permissionAction(MOVE_MONEY_PERMISSION)
         where: {
           walletId: fromWalletId,
           organizationId,
-          ...TRANSFERABLE_PACKAGE_WHERE,
+          ...PACKAGE_CAN_FUND_LESSONS_WHERE,
           id: { notIn: packageIds },
         },
       }),
@@ -374,7 +367,7 @@ export const transferPackages = permissionAction(MOVE_MONEY_PERMISSION)
   .metadata({ actionName: 'transferPackages' })
   .inputSchema(TransferPackagesSchema)
   .action(async ({ ctx, parsedInput }) => {
-    return await prisma.$transaction(
+    return await financialTransaction(
       async (tx) =>
         await transferTx(tx, {
           ...parsedInput,
@@ -391,12 +384,7 @@ export const transferPackages = permissionAction(MOVE_MONEY_PERMISSION)
 
 // ─── CORRECT / GIFT ──────────────────────────────────────────────────────────
 
-/**
- * Что окно правки должно знать о пакете: сколько с него списано и на какие деньги,
- * пришла ли сумма из CRM. Расчёт делает само окно — той же функцией, которой потом
- * исполняет ядро (`finances/correction.ts`), поэтому запрос один на пакет, а не на
- * каждое нажатие клавиши.
- */
+/** Тип пакета и ограничения для полей формы. */
 export const getPackageCorrectionFacts = permissionAction(PACKAGE_EDIT_PERMISSION)
   .metadata({ actionName: 'getPackageCorrectionFacts' })
   .inputSchema(PackageRefSchema)
@@ -406,15 +394,33 @@ export const getPackageCorrectionFacts = permissionAction(PACKAGE_EDIT_PERMISSIO
       organizationId: ctx.session.organizationId!,
     })
     if (!read) throw new NotFoundError('Пакет не найден')
-    return read.facts
+    return {
+      ...read.facts,
+      chargedAttendances: read.charged.map(({ lesson, price: _price, ...attendance }) => ({
+        ...attendance,
+        date: lesson.date,
+      })),
+    }
   })
+
+export const getPackageCorrectionPreview = permissionAction(PACKAGE_EDIT_PERMISSION)
+  .metadata({ actionName: 'getPackageCorrectionPreview' })
+  .inputSchema(PackageCorrectionPreviewSchema)
+  .action(async ({ ctx, parsedInput }) =>
+    financialTransaction((tx) =>
+      previewPackageCorrectionTx(tx, {
+        ...parsedInput,
+        organizationId: ctx.session.organizationId!,
+      }),
+    ),
+  )
 
 /** Исправить пакет, заведённый с ошибкой. Баланс едет следом за его остатком. */
 export const correctPackage = permissionAction(PACKAGE_EDIT_PERMISSION)
   .metadata({ actionName: 'correctPackage' })
   .inputSchema(CorrectPackageSchema)
   .action(async ({ ctx, parsedInput }) => {
-    return await prisma.$transaction(
+    return await financialTransaction(
       async (tx) =>
         await correctPackageTx(tx, {
           ...parsedInput,
@@ -432,7 +438,7 @@ export const giftLessons = permissionAction(PACKAGE_EDIT_PERMISSION)
   .metadata({ actionName: 'giftLessons' })
   .inputSchema(GiftLessonsSchema)
   .action(async ({ ctx, parsedInput }) => {
-    return await prisma.$transaction(
+    return await financialTransaction(
       async (tx) =>
         await giftLessonsTx(tx, {
           ...parsedInput,

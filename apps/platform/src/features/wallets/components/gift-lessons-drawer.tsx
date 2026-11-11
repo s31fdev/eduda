@@ -28,7 +28,7 @@ interface GiftLessonsDrawerProps {
 }
 
 /**
- * Подарить уроки — отдельным пакетом без денег (см. `giftLessonsTx`).
+ * Начислить уроки — отдельным пакетом без денег (см. `giftLessonsTx`).
  *
  * Сводка считается здесь, без запроса: всё, что она утверждает, — остаток и число
  * закрытых занятий, — карточка ученика уже знает, а цены у подарка нет вовсе.
@@ -58,10 +58,10 @@ export function GiftLessonsDrawer({
   return (
     <>
       <DrawerHeader className="pb-4">
-        <DrawerTitle>Подарить уроки</DrawerTitle>
+        <DrawerTitle>Начислить уроки</DrawerTitle>
         <DrawerDescription>
           В «{wallet ? getWalletLabel(wallet) : 'Кошелёк'}». Отдельным пакетом по 0 ₽: выручки
-          подарок не даёт.
+          начисление не создаёт.
         </DrawerDescription>
       </DrawerHeader>
 
@@ -107,7 +107,7 @@ export function GiftLessonsDrawer({
                 </p>
               )}
               <p className="text-muted-foreground border-t pt-2">
-                Подарок встанет в очередь последним: сначала тратятся оплаченные уроки.
+                Начисленный пакет встанет в очередь последним: сначала тратятся оплаченные уроки.
               </p>
             </div>
           )}
@@ -118,7 +118,7 @@ export function GiftLessonsDrawer({
         <DrawerClose render={<Button variant="outline" />}>Отмена</DrawerClose>
         <Button onClick={submit} disabled={!valid || gift.isPending}>
           {gift.isPending && <Loader className="animate-spin" />}
-          Подарить
+          Начислить
         </Button>
       </DrawerFooter>
     </>

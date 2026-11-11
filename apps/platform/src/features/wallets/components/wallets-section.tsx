@@ -11,7 +11,6 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from '@repo/ui/components/alert-dialog'
-import { Badge } from '@repo/ui/components/badge'
 import { Button } from '@repo/ui/components/button'
 import {
   DropdownMenu,
@@ -45,8 +44,6 @@ import { WalletPreview } from '@/src/features/wallets/components/wallet-preview'
 import { WalletSelect } from '@/src/features/wallets/components/wallet-select'
 import { TransferPackagesDrawer } from '@/src/features/wallets/components/transfer-packages-drawer'
 import { CorrectPackageDrawer } from '@/src/features/wallets/components/correct-package-drawer'
-import { MOVE_MONEY_PERMISSION, PACKAGE_EDIT_PERMISSION } from '@/src/features/wallets/schemas'
-import { useHasPermission } from '@/src/lib/permissions/use-has-permission'
 import { getWalletLabel } from '@/src/features/wallets/utils'
 import { getGroupName } from '@/src/lib/utils'
 import { useQueryClient } from '@tanstack/react-query'
@@ -127,8 +124,6 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
   const isMobile = useIsMobile()
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null)
   const queryClient = useQueryClient()
-  const canMoveMoney = useHasPermission(MOVE_MONEY_PERMISSION)
-  const canEditPackages = useHasPermission(PACKAGE_EDIT_PERMISSION)
   // Занятия, которые ждут оплаты, — по кошельку каждое. Считаются денежным
   // предикатом, а не `include`, поэтому едут своим запросом (см. хук).
   const { data: unpaidByWallet } = useStudentWalletUnpaidQuery(student.id)
@@ -327,103 +322,55 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
       )}
 
       {/* Wallet cards */}
-      {student.wallets.length === 0 ? (
+      {activeWallets.length === 0 ? (
         <div className="bg-muted/50 rounded-lg border border-dashed p-4 text-center text-sm">
           <p className="text-muted-foreground">Нет кошельков</p>
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {student.wallets.map((w) => (
+          {activeWallets.map((w) => (
             <WalletPreview
               key={w.id}
               wallet={w}
               unpaidLessons={unpaidByWallet?.[w.id] ?? 0}
               actions={
-                // Архивный кошелёк read-only, и единственное исключение — перенос, и
-                // только пока на нём есть что перевезти: уроки или висящие на нём
-                // группы. Вернуть его из архива нельзя, так что иначе остаток заперт
-                // навсегда.
-                w.status === 'ARCHIVED' ? (
-                  <>
-                    <Badge variant="outline">Архив</Badge>
-                    {canMoveMoney && activeWallets.length > 0 && (
-                      <WalletActionsMenu
-                        label="Ещё"
-                        disabled={isPending}
-                        actions={[
-                          ...(w.lessonsBalance > 0
-                            ? [
-                                {
-                                  label: 'Перенести пакет',
-                                  icon: <Package />,
-                                  onSelect: () => openTransferDrawer(w.id, 'packages'),
-                                },
-                              ]
-                            : []),
-                          ...(w.studentGroups.length > 0
-                            ? [
-                                {
-                                  label: 'Перенести группу',
-                                  icon: <Users />,
-                                  onSelect: () => openTransferDrawer(w.id, 'groups'),
-                                },
-                              ]
-                            : []),
-                        ]}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <WalletActionsMenu
-                    label="Действия с кошельком"
-                    disabled={isPending}
-                    actions={[
-                      {
-                        label: 'Переименовать',
-                        icon: <Pen />,
-                        onSelect: () => openEditDrawer(w),
-                      },
-                      ...(canMoveMoney && unlinkedGroups.length > 0
-                        ? [
-                            {
-                              label: 'Привязать группу',
-                              icon: <Link2 />,
-                              onSelect: () => openLinkDrawerForWallet(w.id),
-                            },
-                          ]
-                        : []),
-                      ...(canMoveMoney && activeWallets.length >= 2
-                        ? [
-                            {
-                              label: 'Перенести пакет',
-                              icon: <Package />,
-                              onSelect: () => openTransferDrawer(w.id, 'packages'),
-                            },
-                            {
-                              label: 'Перенести группу',
-                              icon: <Users />,
-                              onSelect: () => openTransferDrawer(w.id, 'groups'),
-                            },
-                          ]
-                        : []),
-                      ...(canEditPackages && w.packages.length > 0
-                        ? [
-                            {
-                              label: 'Исправить пакет',
-                              icon: <PackageOpen />,
-                              onSelect: () => openCorrectDrawer(w.id),
-                            },
-                          ]
-                        : []),
-                      {
-                        label: 'Архивировать',
-                        icon: <Archive />,
-                        onSelect: () => confirmArchive(w.id),
-                        variant: 'destructive' as const,
-                      },
-                    ]}
-                  />
-                )
+                <WalletActionsMenu
+                  label="Действия с кошельком"
+                  disabled={isPending}
+                  actions={[
+                    {
+                      label: 'Переименовать',
+                      icon: <Pen />,
+                      onSelect: () => openEditDrawer(w),
+                    },
+                    {
+                      label: 'Привязать группу',
+                      icon: <Link2 />,
+                      onSelect: () => openLinkDrawerForWallet(w.id),
+                    },
+                    {
+                      label: 'Перенести пакет',
+                      icon: <Package />,
+                      onSelect: () => openTransferDrawer(w.id, 'packages'),
+                    },
+                    {
+                      label: 'Перенести группу',
+                      icon: <Users />,
+                      onSelect: () => openTransferDrawer(w.id, 'groups'),
+                    },
+                    {
+                      label: 'Исправить пакет',
+                      icon: <PackageOpen />,
+                      onSelect: () => openCorrectDrawer(w.id),
+                    },
+                    {
+                      label: 'Архивировать',
+                      icon: <Archive />,
+                      onSelect: () => confirmArchive(w.id),
+                      variant: 'destructive' as const,
+                    },
+                  ]}
+                />
               }
             />
           ))}
@@ -439,9 +386,7 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
             </AlertDialogMedia>
             <AlertDialogTitle>Архивировать кошелёк?</AlertDialogTitle>
             <AlertDialogDescription>
-              Архивный кошелёк доступен только для просмотра: его нельзя будет редактировать,
-              переименовывать, привязывать к группам или использовать в переводах. Вернуть из архива
-              нельзя.
+              Кошелёк исчезнет из карточки ученика. Вернуть его из архива нельзя.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {(() => {
@@ -521,7 +466,6 @@ export default function WalletsSection({ student }: WalletsSectionProps) {
             <CorrectPackageDrawer
               student={student}
               walletId={packageWalletId}
-              unpaidLessons={unpaidByWallet?.[packageWalletId] ?? 0}
               onDone={() => setActiveDrawer(null)}
             />
           )}

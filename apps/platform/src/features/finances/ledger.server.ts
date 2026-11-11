@@ -178,7 +178,17 @@ export async function chargeAttendanceTx(
     return
   }
 
-  await tx.package.update({ where: { id: packet.id }, data: { remaining: { decrement: 1 } } })
+  const claimed = await tx.package.updateMany({
+    where: {
+      id: packet.id,
+      walletId,
+      status: 'ACTIVE',
+      remaining: { gt: 0 },
+      unitPrice: packet.unitPrice,
+    },
+    data: { remaining: { decrement: 1 } },
+  })
+  if (claimed.count !== 1) throw new ConflictError('Пакет изменился во время списания')
 
   const price = packet.unitPrice
 
@@ -674,7 +684,7 @@ async function walletScopeTx(
   return { studentId: wallet.studentId, groupIds: groups.map((g) => g.groupId) }
 }
 
-async function unpaidAttendancesOfWalletTx(
+export async function unpaidAttendancesOfWalletTx(
   tx: Prisma.TransactionClient,
   args: { walletId: number; organizationId: number; take: number },
 ): Promise<{ id: number }[]> {
@@ -1119,8 +1129,8 @@ export async function cancelPackageTx(
     where: { id: packet.walletId },
     data: {
       lessonsBalance: { decrement: packet.remaining },
-      totalLessons: { decrement: packet.lessonCount },
-      totalPayments: { decrement: packet.price },
+      totalLessons: { decrement: Math.min(packet.lessonCount, Math.max(0, wallet.totalLessons)) },
+      totalPayments: { decrement: Math.min(packet.price, Math.max(0, wallet.totalPayments)) },
     },
     select: { lessonsBalance: true, totalPayments: true, totalLessons: true },
   })

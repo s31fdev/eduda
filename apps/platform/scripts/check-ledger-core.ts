@@ -21,7 +21,11 @@ import {
   unchargeAttendanceTx,
   unitPriceOf,
 } from '../src/features/finances/ledger.server'
-import { correctPackageTx, giftLessonsTx } from '../src/features/finances/correction.server'
+import {
+  correctPackageTx,
+  giftLessonsTx,
+  previewPackageCorrectionTx,
+} from '../src/features/finances/correction.server'
 
 class Rollback extends Error {}
 
@@ -699,12 +703,13 @@ async function main() {
       })
       assert.deepEqual(giftHistory, { comment: 'компенсация', delta: 2 }, 'подарок виден в истории')
 
-      // Подарку сумму по-прежнему не назначить: выручка без денег не появляется.
-      await assert.rejects(
-        correct(gifted.packageId, 2, 1_000),
-        /У подарка нет суммы/,
-        'подарок остаётся нулевым',
-      )
+      await correct(gifted.packageId, 2, 1_000)
+      assert.equal((await packetOf(gifted.packageId)).price, 1_000)
+      assert.equal((await entryOf(waiting)).price, 500)
+      await assertBalanced(giftWallet, 'подарок после изменения суммы')
+      await correct(gifted.packageId, 2, 0)
+      assert.equal((await entryOf(waiting)).price, 0)
+      await assertBalanced(giftWallet, 'подарок после обнуления суммы')
 
       // Пакет перехода после слияния с денежной записью: без счёта, но с суммой.
       // Правится как обычный — и количество, и сумма.
@@ -871,6 +876,44 @@ async function main() {
       )
       assert.equal(await balance(typoWallet), 3, 'сумма уроков не двигает')
       await assertBalanced(typoWallet, 'исправление суммы')
+
+      // Независимые поля и подтверждённый снимок в настоящей транзакции.
+      const independentWallet = await newWallet()
+      const independent = await sold(independentWallet, '2027-10-01', 4_000, 4)
+      const edit = {
+        packageId: independent.id,
+        organizationId,
+        remaining: 4,
+        lessonCount: 6,
+        price: 4_000,
+      }
+      const preview = await previewPackageCorrectionTx(tx, edit)
+      assert.ok(preview.plan)
+      const saveIndependent = (snapshot: string) =>
+        correctPackageTx(tx, {
+          ...edit,
+          snapshot,
+          comment: 'независимая правка',
+          actorUserId: null,
+          effectiveAt: '2027-10-02',
+        })
+      const chargedDuringPreview = await visit({ walletId: independentWallet })
+      await charge(chargedDuringPreview)
+      await assert.rejects(() => saveIndependent(preview.snapshot), /Данные изменились/)
+      const fresh = await previewPackageCorrectionTx(tx, edit)
+      assert.ok(fresh.plan)
+      await saveIndependent(fresh.snapshot)
+      assert.equal((await packetOf(independent.id)).remaining, 4)
+      assert.equal((await packetOf(independent.id)).lessonCount, 6)
+      assert.equal(await packetLedgerSum(independent.id), 4)
+      await assertBalanced(independentWallet, 'независимая правка')
+      await unchargeAttendanceTx(tx, {
+        attendanceId: chargedDuringPreview,
+        organizationId,
+        actorUserId: null,
+      })
+      assert.equal((await packetOf(independent.id)).remaining, 5)
+      await assertBalanced(independentWallet, 'возврат после независимой правки')
 
       // Правка одной суммы на кошельке с нулевым счётчиком оплат: ни одно поле
       // кошелька не сдвинулось, а в истории ученика она обязана остаться.

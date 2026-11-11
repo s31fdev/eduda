@@ -1,5 +1,6 @@
 'use client'
 
+import { displayPackageName } from '@/src/features/finances/package-name'
 import { STUDENT_STATUS } from '@/src/features/students/status'
 import type { StudentStatus } from '@repo/db/enums'
 import { Badge } from '@repo/ui/components/badge'
@@ -276,7 +277,9 @@ export function WalletPreview({
                   номер: строка обязана чем-то начинаться, а по номеру пакет хотя
                   бы находится в списке оплат. */}
               <span className="flex min-w-0 flex-col leading-4">
-                <span className="truncate">{p.productName || `Пакет №${p.id}`}</span>
+                <span className="truncate">
+                  {displayPackageName(p.productName) || `Пакет №${p.id}`}
+                </span>
                 <span className="text-muted-foreground truncate">
                   {formatDate(p.date)} · {formatCurrency(p.price)}
                 </span>

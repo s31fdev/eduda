@@ -1,5 +1,6 @@
 'use server'
 
+import { financialTransaction } from '../transaction.server'
 import { Prisma, prisma } from '@repo/db'
 import { invoiceIdOfRawData } from '@/src/features/amocrm/import.server'
 import { activatePackageTx, cancelPackageTx } from '@/src/features/finances/ledger.server'
@@ -148,7 +149,7 @@ export const createPackage = permissionAction({ payment: ['create'] })
   .metadata({ actionName: 'createPackage' })
   .inputSchema(CreatePackageSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       await createPaymentWithPackageTx(tx, {
         ...parsedInput,
         organizationId: ctx.session.organizationId!,
@@ -167,7 +168,7 @@ export const confirmPayment = permissionAction({ payment: ['update'] })
   .metadata({ actionName: 'confirmPayment' })
   .inputSchema(PaymentIdSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const payment = await tx.payment.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
         select: { id: true, status: true, packages: { select: { id: true } } },
@@ -198,7 +199,7 @@ export const cancelPackage = permissionAction({ payment: ['delete'] })
   .metadata({ actionName: 'cancelPackage' })
   .inputSchema(PackageIdSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const packet = await tx.package.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
         select: { status: true },
@@ -219,7 +220,7 @@ export const cancelPayment = permissionAction({ payment: ['delete'] })
   .metadata({ actionName: 'cancelPayment' })
   .inputSchema(PaymentIdSchema)
   .action(async ({ ctx, parsedInput }) => {
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       const payment = await tx.payment.findFirst({
         where: { id: parsedInput.id, organizationId: ctx.session.organizationId! },
         select: { id: true, status: true, packages: { select: { id: true, status: true } } },
@@ -266,7 +267,7 @@ export const resolveUnprocessedPayment = permissionAction({ payment: ['create'] 
   .action(async ({ ctx, parsedInput }) => {
     const { unprocessedPaymentId, ...packet } = parsedInput
 
-    await prisma.$transaction(async (tx) => {
+    await financialTransaction(async (tx) => {
       // Разобранная оплата уносит с собой id счёта CRM: иначе опрос увидит тот же
       // счёт в своём недельном окне и заведёт по нему вторую оплату. Строку
       // разбора после этого можно хоть удалять — метка живёт на самом счёте.
