@@ -121,15 +121,14 @@ export default function MakeUpDialog({ open, onOpenChange, attendance }: MakeUpD
             value={selectedLesson}
             onValueChange={setSelectedLesson}
             placeholder="Выберите урок"
-            emptyText="В этот день нет уроков того же курса или преподавателя"
+            emptyText="На эту дату нет подходящих занятий"
             itemDisabled={(l) => l._count.attendance >= l.group.maxStudents}
             renderItem={(l) => (
               <Item size="xs" className="p-0">
                 <ItemContent>
                   <ItemTitle className="whitespace-nowrap">{getGroupName(l.group)}</ItemTitle>
                   <ItemDescription>
-                    {/* Своё имя группы курса не называет, а по преподавателю
-                        подходят и группы другого курса. */}
+                    {/* У группы с собственным названием показываем курс отдельно. */}
                     {l.group.name && `${l.group.course.name} | `}
                     {l.teachers.map((t) => t.teacher.name).join(', ')} | {l.group.location.name} |{' '}
                     <span

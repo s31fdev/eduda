@@ -27,8 +27,8 @@ export type MakeupRuleSource = {
 }
 
 /**
- * Чем стороны различаются. Кабинет: только филиал пропущенного занятия и только
- * ближайшие дни. Платформа: все филиалы и любой день, в том числе прошедший —
+ * Кабинет ограничивает выбор филиалом, курсом или преподавателем и ближайшими
+ * днями. Платформа: все активные группы и любой день, в том числе прошедший —
  * менеджер записывает отработку задним числом, если ребёнок уже сходил.
  */
 export type MakeupScope = {
@@ -39,7 +39,7 @@ export type MakeupScope = {
 const PLATFORM: MakeupScope = { sameLocation: false }
 
 /**
- * Куда можно записать на отработку: урок группы того же курса или группы, у
+ * В кабинете подходит урок группы того же курса или группы, у
  * которой есть общий преподаватель с группой пропуска. По преподавателю подходят
  * и группы другого курса — это решение школы (27.10.2026).
  *
@@ -61,11 +61,13 @@ export function makeupTargetWhere(
     ...(scope.dates && { date: scope.dates }),
     group: {
       status: 'ACTIVE',
-      ...(scope.sameLocation && { locationId: source.locationId }),
-      OR: [
-        { courseId: source.courseId },
-        { teachers: { some: { teacher: { groups: { some: { groupId: source.groupId } } } } } },
-      ],
+      ...(scope.sameLocation && {
+        locationId: source.locationId,
+        OR: [
+          { courseId: source.courseId },
+          { teachers: { some: { teacher: { groups: { some: { groupId: source.groupId } } } } } },
+        ],
+      }),
     },
   }
 }
@@ -137,7 +139,9 @@ async function assertTargetTx(
   })
   if (fits === 0) {
     throw new ConflictError(
-      'Этот урок не подходит для отработки: нужна группа того же курса или того же преподавателя',
+      args.scope?.sameLocation
+        ? 'Этот урок не подходит для отработки: нужна группа того же курса или того же преподавателя в том же филиале'
+        : 'Этот урок не подходит для отработки: выберите активный урок активной группы',
     )
   }
 }

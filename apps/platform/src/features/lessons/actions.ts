@@ -91,7 +91,7 @@ export const getLessonDetail = authAction
 
 /**
  * Уроки выбранного дня, куда можно записать на отработку, — по общему правилу
- * (`makeupTargetWhere`): тот же курс или тот же преподаватель, все филиалы.
+ * (`makeupTargetWhere`): активные группы всех филиалов школы.
  * Полные не отсекаем: окно показывает их выключенными, чтобы было видно почему.
  */
 export const getMakeupOptions = permissionAction(MANAGE_ATTENDANCE_PERMISSION)
